@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_EXTENSIONS: list[str] = [".c", ".h"]
-DEFAULT_CONFIG: str = "uncrustifyVoltuC.cfg"
+DEFAULT_CONFIG: Path = Path(__file__).parent / "uncrustifyVoltuC.cfg"
 
 
 def _collect_files(
@@ -45,7 +45,8 @@ def _run_uncrustify(path: Path, config: str) -> tuple[bool, str]:
     result = subprocess.run(
         [
             "uncrustify",
-            "-c", config,
+            "-c",
+            config,
             "--replace",
             "--no-backup",
             "--if-changed",
@@ -53,6 +54,7 @@ def _run_uncrustify(path: Path, config: str) -> tuple[bool, str]:
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         msg = (result.stderr or result.stdout).strip()
@@ -64,7 +66,7 @@ def _run_uncrustify(path: Path, config: str) -> tuple[bool, str]:
 
 def format_files(
     roots: list[str | Path],
-    config: str = DEFAULT_CONFIG,
+    config: str | Path | None = None,
     extensions: list[str] | None = None,
     exclude: list[str] | None = None,
 ) -> int:
@@ -73,6 +75,7 @@ def format_files(
     if exclude is None:
         exclude = []
 
+    resolved_config = str(config) if config is not None else str(DEFAULT_CONFIG)
     root_paths = [Path(r) for r in roots]
     files = _collect_files(root_paths, extensions, exclude)
 
@@ -84,7 +87,7 @@ def format_files(
     errors: list[tuple[Path, str]] = []
 
     for path in files:
-        changed, err = _run_uncrustify(path, config)
+        changed, err = _run_uncrustify(path, resolved_config)
         if err:
             errors.append((path, err))
         elif changed:
@@ -107,8 +110,16 @@ def main() -> None:
         description="Run uncrustify on a source tree and report reformatted files.",
     )
     parser.add_argument("roots", nargs="+", metavar="ROOT")
-    parser.add_argument("-c", "--config", default=DEFAULT_CONFIG, metavar="FILE")
-    parser.add_argument("-e", "--ext", nargs="+", default=DEFAULT_EXTENSIONS, metavar="EXT")
+    parser.add_argument(
+        "-c",
+        "--config",
+        default=None,
+        metavar="FILE",
+        help="uncrustify config (default: bundled uncrustifyVoltuC.cfg)",
+    )
+    parser.add_argument(
+        "-e", "--ext", nargs="+", default=DEFAULT_EXTENSIONS, metavar="EXT"
+    )
     parser.add_argument("-x", "--exclude", nargs="+", default=[], metavar="PATTERN")
 
     args = parser.parse_args()

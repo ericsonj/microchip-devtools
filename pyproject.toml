@@ -1,6 +1,6 @@
 [project]
 name = "microchip-devtools"
-version = "0.1.1"
+version = "0.1.2"
 description = "Shared build and dev environment scripts for Microchip firmware projects"
 authors = [{ name = "Ericson Joseph", email = "joseph.ericson@allthings.me" }]
 requires-python = ">=3.10,<4.0"
@@ -19,13 +19,25 @@ packages = [{ include = "microchip_devtools", from = "src" }]
 
 [tool.poetry.scripts]
 list = "microchip_devtools.list_cmds:main"
-project-setup = "microchip_devtools.setup_env.runner:main"
+setup = "microchip_devtools.setup_env.runner:main"
 validate-fmt3 = "microchip_devtools.xc32.validate_fmt3:main"
 merge-hex = "microchip_devtools.xc32.merge_hex:main"
 format = "microchip_devtools.format.uncrustify:main"
 mcc-refresh = "microchip_devtools.mcc.mcc_refresh:main"
 check-peripheral = "microchip_devtools.mcc.check_peripheral:main"
 parse-hardware = "microchip_devtools.mcc.parse_hardware:main"
+sync-mplab = "microchip_devtools.mplab.sync_mplab:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0,<9.0.0"
+pytest-cov = "^7.1.0"
+
+[tool.pytest.ini_options]
+addopts = "--cov=microchip_devtools --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+skip_empty = true

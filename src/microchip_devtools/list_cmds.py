@@ -11,13 +11,14 @@ _THEME = Theme(
 
 COMMANDS = [
     ("list", "List all available commands"),
-    ("project-setup", "Check prerequisites and install project deps"),
+    ("setup", "Check prerequisites and install project deps"),
     ("validate-fmt3", "Detect XC32 fmt=3 compiler bug in ELF/object files"),
     ("merge-hex", "Merge bootloader + app HEX into a single image"),
     ("format", "Format C/H source files with uncrustify"),
     ("mcc-refresh", "Force full MCC regeneration workflow"),
     ("check-peripheral", "Validate MCC-generated peripheral config files"),
     ("parse-hardware", "Show hardware config parsed from Harmony YML files"),
+    ("sync-mplab", "Sync MPLAB X project files"),
 ]
 
 
