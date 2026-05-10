@@ -13,12 +13,12 @@ Workflow (default)
 4. Launch     – open project in MPLAB X (unless --skip-launch).
 5. Wait       – prompt operator to confirm MCC generation is complete.
 6. Merge      – launch meld to review old vs new files (unless --skip-merge).
-7. Validate   – run mchp-check-peripheral (Bug 1 + Bug 3 guards).
+7. Validate   – run check-peripheral (Bug 1 + Bug 3 guards).
 8. Report     – print git diff stat for the generated directory.
 
 Usage
 -----
-    mchp-mcc-refresh [--root PATH] [--project-name NAME] [options]
+    mcc-refresh [--root PATH] [--project-name NAME] [options]
 
     --root PATH           Project root (default: $VOLTU_PROJECT_ROOT or cwd)
     --project-name NAME   Project name (default: $VOLTU_PROJECT_NAME or folder name)
@@ -239,12 +239,12 @@ def merge_review(
 
 def validate(dry_run: bool, root: Path, name: str) -> None:
     if dry_run:
-        log("[dry-run] Would run: mchp-check-peripheral")
+        log("[dry-run] Would run: check-peripheral")
         return
 
     log("Running peripheral config validation...")
     result = subprocess.run(
-        ["mchp-check-peripheral", "--root", str(root), "--project-name", name],
+        ["check-peripheral", "--root", str(root), "--project-name", name],
         cwd=root,
     )
     if result.returncode != 0:

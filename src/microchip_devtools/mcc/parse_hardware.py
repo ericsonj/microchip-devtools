@@ -3,8 +3,8 @@
 microchip_devtools.mcc.parse_hardware — Parse Harmony component YML and report hardware config.
 
 Usage:
-    mchp-parse-hardware [--root PATH] [--project-name NAME]
-    mchp-parse-hardware --components-dir PATH [--format json] [--output FILE]
+    parse-hardware [--root PATH] [--project-name NAME]
+    parse-hardware --components-dir PATH [--format json] [--output FILE]
 
 Exit codes:
     0 — success

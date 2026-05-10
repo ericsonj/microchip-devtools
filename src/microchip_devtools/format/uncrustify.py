@@ -6,7 +6,7 @@ Walks one or more source roots, collects C/H files, runs uncrustify,
 and reports which files were actually reformatted.
 
 CLI usage:
-    mchp-format firmware/src -c uncrustifyVoltuC.cfg -x config mcc build
+    format firmware/src -c uncrustifyVoltuC.cfg -x config mcc build
 
 Python usage:
     from microchip_devtools.format.uncrustify import format_files

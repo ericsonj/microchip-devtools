@@ -91,7 +91,7 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
         console.print(
             Panel(
                 f"[green]✔ All {total} checks passed. The project is ready to build.[/green]\n"
-                f"  Run [bold]make[/bold] or [bold]poetry run mchp-setup install[/bold] to continue.",
+                f"  Run [bold]make[/bold] or [bold]poetry run project-setup install[/bold] to continue.",
                 border_style="green",
                 padding=(0, 2),
             )
@@ -101,7 +101,7 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
         console.print(
             Panel(
                 f"[red]✗ {failed} of {total} checks failed.[/red]\n"
-                f"  Fix the issues above, then run [bold]poetry run mchp-setup check[/bold] again.",
+                f"  Fix the issues above, then run [bold]poetry run project-setup check[/bold] again.",
                 border_style="red",
                 padding=(0, 2),
             )
@@ -216,7 +216,7 @@ def _prompt_env_form(defaults: dict[str, str], env_file: Path) -> None:
         console.print(
             Panel(
                 f"[green]✔ .env updated.[/green] Overridden: {keys_fmt}\n\n"
-                f"  Run [bold]poetry run mchp-setup check[/bold] to verify your setup.",
+                f"  Run [bold]poetry run project-setup check[/bold] to verify your setup.",
                 border_style="green",
                 padding=(0, 2),
             )
@@ -226,7 +226,7 @@ def _prompt_env_form(defaults: dict[str, str], env_file: Path) -> None:
             Panel(
                 "[green]✔ .env created.[/green] All variables left at their defaults (commented out).\n\n"
                 "  Edit [cyan].env[/cyan] manually any time to override a value.\n"
-                "  Run [bold]poetry run mchp-setup check[/bold] to verify your setup.",
+                "  Run [bold]poetry run project-setup check[/bold] to verify your setup.",
                 border_style="green",
                 padding=(0, 2),
             )

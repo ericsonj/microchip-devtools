@@ -7,7 +7,7 @@ Optionally patches:
   - DEVCFG0 config bits to enable EJTAG debugging (PIC32MK-specific)
 
 Usage:
-    mchp-merge-hex boot.hex app.hex out.hex [options]
+    merge-hex boot.hex app.hex out.hex [options]
 
 Options:
     --sig-addr ADDR     Physical address to write the signature word (hex, e.g. 0x1D0FFFF8)

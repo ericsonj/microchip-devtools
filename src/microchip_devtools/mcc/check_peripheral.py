@@ -11,7 +11,7 @@ Prevents two silent hardware bugs:
            (core.yml). PMD registers are write-once per reset.
 
 Usage:
-    mchp-check-peripheral [--root PATH] [--project-name NAME] [--stubs-file PATH]
+    check-peripheral [--root PATH] [--project-name NAME] [--stubs-file PATH]
 
 Exit code:
     0 — all checks passed
