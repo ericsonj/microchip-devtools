@@ -5,9 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from voltu_devtools.setup_env._ui import (
+from microchip_devtools.setup_env._ui import (
     _fail, _pass, _warn, offer_save_to_env, prompt_path,
 )
+from microchip_devtools.setup_env.defaults import PROGRAMMER_VALUES
 
 
 def check_python() -> bool:
@@ -137,6 +138,20 @@ def check_dfp(dfp_path: str, env_file: Path) -> bool:
     if new_path and _try_path(new_path):
         offer_save_to_env("DFP_PATH", new_path, env_file)
         return True
+    return False
+
+
+def check_programmer(value: str) -> bool:
+    valid = set(PROGRAMMER_VALUES.keys())
+    if value in valid:
+        full_name = PROGRAMMER_VALUES[value]
+        _pass(f"Programmer  ({value} → {full_name})")
+        return True
+    opts = "  ".join(sorted(valid))
+    _fail(
+        "Programmer",
+        f"Unknown value: {value!r}\n           Valid options: {opts}",
+    )
     return False
 
 

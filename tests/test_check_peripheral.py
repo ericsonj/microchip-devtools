@@ -1,6 +1,6 @@
 """Tests for MCC peripheral config validation logic."""
 
-from voltu_devtools.mcc.check_peripheral import (
+from microchip_devtools.mcc.check_peripheral import (
     _parse_extern_handlers,
     _parse_handler_declarations,
     _parse_pmd_from_core_yml,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-voltu_devtools.mcc.check_peripheral — Validate MCC-generated peripheral config files.
+microchip_devtools.mcc.check_peripheral — Validate MCC-generated peripheral config files.
 
 Prevents two silent hardware bugs:
 
@@ -11,7 +11,7 @@ Prevents two silent hardware bugs:
            (core.yml). PMD registers are write-once per reset.
 
 Usage:
-    voltu-check-peripheral [--root PATH] [--project-name NAME] [--stubs-file PATH]
+    mchp-check-peripheral [--root PATH] [--project-name NAME] [--stubs-file PATH]
 
 Exit code:
     0 — all checks passed
@@ -24,8 +24,8 @@ import re
 import sys
 from pathlib import Path
 
-from voltu_devtools._project import project_name as _env_project_name
-from voltu_devtools._project import project_root as _env_project_root
+from microchip_devtools._project import project_name as _env_project_name
+from microchip_devtools._project import project_root as _env_project_root
 
 
 def _read(path: Path) -> str:

@@ -13,8 +13,8 @@ in the real XC32 build. Scanning only the final ELF misses those. This script
 scans individual object files (.o) where all symbols are present before GC.
 
 Usage:
-    voltu-validate-xc32 <elf_or_obj> [<elf_or_obj> ...]
-    voltu-validate-xc32 --objects-dir <dir>
+    mchp-validate-xc32 <elf_or_obj> [<elf_or_obj> ...]
+    mchp-validate-xc32 --objects-dir <dir>
 
 Exit codes:
     0  — no violations found

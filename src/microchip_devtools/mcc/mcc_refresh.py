@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-voltu_devtools.mcc.mcc_refresh — Force full MCC regeneration of driver files.
+microchip_devtools.mcc.mcc_refresh — Force full MCC regeneration of driver files.
 
 GUI-assisted: MPLAB X is launched automatically; the operator opens MCC and
 clicks "Generate Code", then confirms by pressing Enter here.
@@ -13,12 +13,12 @@ Workflow (default)
 4. Launch     – open project in MPLAB X (unless --skip-launch).
 5. Wait       – prompt operator to confirm MCC generation is complete.
 6. Merge      – launch meld to review old vs new files (unless --skip-merge).
-7. Validate   – run voltu-check-peripheral (Bug 1 + Bug 3 guards).
+7. Validate   – run mchp-check-peripheral (Bug 1 + Bug 3 guards).
 8. Report     – print git diff stat for the generated directory.
 
 Usage
 -----
-    voltu-mcc-refresh [--root PATH] [--project-name NAME] [options]
+    mchp-mcc-refresh [--root PATH] [--project-name NAME] [options]
 
     --root PATH           Project root (default: $VOLTU_PROJECT_ROOT or cwd)
     --project-name NAME   Project name (default: $VOLTU_PROJECT_NAME or folder name)
@@ -39,8 +39,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from voltu_devtools._project import project_name as _env_project_name
-from voltu_devtools._project import project_root as _env_project_root
+from microchip_devtools._project import project_name as _env_project_name
+from microchip_devtools._project import project_root as _env_project_root
 
 _DEFAULT_MPLAB = "/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide"
 _DEFAULT_MERGE_TOOL = "meld"
@@ -56,13 +56,14 @@ def _count_files(path: Path) -> int:
 
 def _build_paths(root: Path, name: str) -> dict[str, Path]:
     return {
-        "generated_dir":    root / "firmware/src/config/default",
-        "flags_dir":        root / f"firmware/{name}.X/.generated_files/flags/default",
-        "mcc_project":      root / f"firmware/{name}.X",
-        "mcc_config":       root / f"firmware/{name}.X/{name}_default/mcc-config.mc4",
-        "success_manifest": root / "firmware/src/config/default/harmony-manifest-success.yml",
-        "log_dir":          root / "build/logs",
-        "backup_dir":       root / "build/backups",
+        "generated_dir": root / "firmware/src/config/default",
+        "flags_dir": root / f"firmware/{name}.X/.generated_files/flags/default",
+        "mcc_project": root / f"firmware/{name}.X",
+        "mcc_config": root / f"firmware/{name}.X/{name}_default/mcc-config.mc4",
+        "success_manifest": root
+        / "firmware/src/config/default/harmony-manifest-success.yml",
+        "log_dir": root / "build/logs",
+        "backup_dir": root / "build/backups",
     }
 
 
@@ -72,7 +73,9 @@ def preflight(args: argparse.Namespace, paths: dict[str, Path], root: Path) -> N
     errors: list[str] = []
 
     if not paths["generated_dir"].is_dir():
-        errors.append(f"Generated output directory not found: {paths['generated_dir'].relative_to(root)}")
+        errors.append(
+            f"Generated output directory not found: {paths['generated_dir'].relative_to(root)}"
+        )
 
     if not paths["mcc_config"].exists():
         errors.append(f"MCC config not found: {paths['mcc_config'].relative_to(root)}")
@@ -129,7 +132,9 @@ def clean(dry_run: bool, paths: dict[str, Path], root: Path) -> None:
             log(f"Skip (already absent): {label}")
             continue
         if dry_run:
-            log(f"[dry-run] Would delete {count:>4} files — {label}: {path.relative_to(root)}")
+            log(
+                f"[dry-run] Would delete {count:>4} files — {label}: {path.relative_to(root)}"
+            )
         else:
             log(f"Deleting {count:>4} files — {label}: {path.relative_to(root)}")
             shutil.rmtree(path)
@@ -177,26 +182,36 @@ def wait_for_user(dry_run: bool, paths: dict[str, Path], root: Path) -> None:
         log("Aborted by user")
         sys.exit(1)
 
-    c_files = list(paths["generated_dir"].rglob("*.c")) if paths["generated_dir"].exists() else []
+    c_files = (
+        list(paths["generated_dir"].rglob("*.c"))
+        if paths["generated_dir"].exists()
+        else []
+    )
     if not c_files:
         log("ERROR: Generated directory is empty or missing after generation.")
         log(f"  Expected sources at: {paths['generated_dir'].relative_to(root)}")
         sys.exit(1)
 
     if not paths["success_manifest"].exists():
-        log(f"WARNING: Success manifest not found: {paths['success_manifest'].relative_to(root)}")
+        log(
+            f"WARNING: Success manifest not found: {paths['success_manifest'].relative_to(root)}"
+        )
         log("  Generation may have completed partially. Continuing to validation.")
 
     total = _count_files(paths["generated_dir"])
     log(f"Generated directory restored — {total} files")
 
 
-def merge_review(backup_path: Optional[Path], dry_run: bool, paths: dict[str, Path]) -> None:
+def merge_review(
+    backup_path: Optional[Path], dry_run: bool, paths: dict[str, Path]
+) -> None:
     merge_tool = os.environ.get("MCC_MERGE_TOOL", _DEFAULT_MERGE_TOOL)
 
     if dry_run or backup_path is None:
         if dry_run:
-            log(f"[dry-run] Would launch {merge_tool} to compare old vs new generated files")
+            log(
+                f"[dry-run] Would launch {merge_tool} to compare old vs new generated files"
+            )
         return
 
     if not backup_path.exists() or not paths["generated_dir"].exists():
@@ -213,7 +228,9 @@ def merge_review(backup_path: Optional[Path], dry_run: bool, paths: dict[str, Pa
     print()
 
     try:
-        subprocess.run([merge_tool, str(backup_path), str(paths["generated_dir"])], check=False)
+        subprocess.run(
+            [merge_tool, str(backup_path), str(paths["generated_dir"])], check=False
+        )
     except (FileNotFoundError, Exception) as e:
         log(f"WARNING: Failed to launch merge tool: {e}")
 
@@ -222,12 +239,12 @@ def merge_review(backup_path: Optional[Path], dry_run: bool, paths: dict[str, Pa
 
 def validate(dry_run: bool, root: Path, name: str) -> None:
     if dry_run:
-        log("[dry-run] Would run: voltu-check-peripheral")
+        log("[dry-run] Would run: mchp-check-peripheral")
         return
 
     log("Running peripheral config validation...")
     result = subprocess.run(
-        ["voltu-check-peripheral", "--root", str(root), "--project-name", name],
+        ["mchp-check-peripheral", "--root", str(root), "--project-name", name],
         cwd=root,
     )
     if result.returncode != 0:
@@ -272,10 +289,17 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--root", type=Path, default=None,
-                        help="Project root (default: $VOLTU_PROJECT_ROOT or cwd)")
-    parser.add_argument("--project-name", default=None,
-                        help="Project name (default: $VOLTU_PROJECT_NAME or folder name)")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Project root (default: $VOLTU_PROJECT_ROOT or cwd)",
+    )
+    parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Project name (default: $VOLTU_PROJECT_NAME or folder name)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-launch", action="store_true")
     parser.add_argument("--skip-merge", action="store_true")

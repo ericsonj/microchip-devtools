@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-voltu_devtools.format.uncrustify — Python wrapper for uncrustify.
+microchip_devtools.format.uncrustify — Python wrapper for uncrustify.
 
 Walks one or more source roots, collects C/H files, runs uncrustify,
 and reports which files were actually reformatted.
 
 CLI usage:
-    voltu-format firmware/src -c uncrustifyVoltuC.cfg -x config mcc build
+    mchp-format firmware/src -c uncrustifyVoltuC.cfg -x config mcc build
 
 Python usage:
-    from voltu_devtools.format.uncrustify import format_files
+    from microchip_devtools.format.uncrustify import format_files
     rc = format_files(roots=["firmware/src"], config="style.cfg", exclude=["config"])
 """
 

@@ -1,14 +1,13 @@
 [project]
-name = "voltu-devtools"
+name = "microchip-devtools"
 version = "0.1.0"
-description = "Shared build and dev environment scripts for Voltu firmware projects"
-authors = [
-    {name = "Ericson Joseph", email = "joseph.ericson@allthings.me"}
-]
+description = "Shared build and dev environment scripts for Microchip firmware projects"
+authors = [{ name = "Ericson Joseph", email = "joseph.ericson@allthings.me" }]
 requires-python = ">=3.10,<4.0"
 dependencies = [
     "python-dotenv (>=1.2.2,<2.0.0)",
     "pyyaml (>=6.0.2,<7.0.0)",
+    "rich (>=13.0,<15.0)",
 ]
 
 [build-system]
@@ -16,16 +15,17 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-packages = [{include = "voltu_devtools", from = "src"}]
+packages = [{ include = "microchip_devtools", from = "src" }]
 
 [tool.poetry.scripts]
-voltu-setup-env      = "voltu_devtools.setup_env.runner:main"
-voltu-validate-xc32  = "voltu_devtools.xc32.validate_fmt3:main"
-voltu-merge-hex      = "voltu_devtools.xc32.merge_hex:main"
-voltu-format         = "voltu_devtools.format.uncrustify:main"
-voltu-check-peripheral = "voltu_devtools.mcc.check_peripheral:main"
-voltu-parse-hardware = "voltu_devtools.mcc.parse_hardware:main"
-voltu-mcc-refresh    = "voltu_devtools.mcc.mcc_refresh:main"
+list = "microchip_devtools.list_cmds:main"
+project-setup = "microchip_devtools.setup_env.runner:main"
+validate-fmt3 = "microchip_devtools.xc32.validate_fmt3:main"
+merge-hex = "microchip_devtools.xc32.merge_hex:main"
+format = "microchip_devtools.format.uncrustify:main"
+mcc-refresh = "microchip_devtools.mcc.mcc_refresh:main"
+check-peripheral = "microchip_devtools.mcc.check_peripheral:main"
+parse-hardware = "microchip_devtools.mcc.parse_hardware:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0,<9.0.0"

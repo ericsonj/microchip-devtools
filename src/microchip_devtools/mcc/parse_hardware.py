@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-voltu_devtools.mcc.parse_hardware — Parse Harmony component YML and report hardware config.
+microchip_devtools.mcc.parse_hardware — Parse Harmony component YML and report hardware config.
 
 Usage:
-    voltu-parse-hardware [--root PATH] [--project-name NAME]
-    voltu-parse-hardware --components-dir PATH [--format json] [--output FILE]
+    mchp-parse-hardware [--root PATH] [--project-name NAME]
+    mchp-parse-hardware --components-dir PATH [--format json] [--output FILE]
 
 Exit codes:
     0 — success
@@ -24,8 +24,8 @@ from typing import Any
 
 import yaml
 
-from voltu_devtools._project import project_name as _env_project_name
-from voltu_devtools._project import project_root as _env_project_root
+from microchip_devtools._project import project_name as _env_project_name
+from microchip_devtools._project import project_root as _env_project_root
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 """Tests for XC32 fmt=3 detection logic."""
 
 import pytest
-from voltu_devtools.xc32.validate_fmt3 import _is_fmt3_trigger
+from microchip_devtools.xc32.validate_fmt3 import _is_fmt3_trigger
 
 
 def test_all_zeros_not_fmt3():

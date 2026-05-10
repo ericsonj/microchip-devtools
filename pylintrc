@@ -1,0 +1,30 @@
+[MASTER]
+py-version=3.10
+jobs=0
+ignore=.venv,venv,env,build,dist,.git,__pycache__
+
+# Ensure pylint resolves imports in src-layout projects.
+init-hook='import os, sys; sys.path.insert(0, os.path.join(os.getcwd(), "src"))'
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    duplicate-code
+
+[FORMAT]
+max-line-length=88
+
+[BASIC]
+good-names=i,j,k,ex,Run,_
+
+[REPORTS]
+score=no
+
+[SIMILARITIES]
+min-similarity-lines=6
+
+[TYPECHECK]
+ignored-classes=_io.TextIOWrapper

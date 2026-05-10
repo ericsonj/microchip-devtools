@@ -1,7 +1,7 @@
 """Tests for Intel HEX merge and patching logic."""
 
 import pytest
-from voltu_devtools.xc32.merge_hex import _ihex_checksum, _patch_word
+from microchip_devtools.xc32.merge_hex import _ihex_checksum, _patch_word
 
 
 def _make_data_record(base_addr: int, data: bytes) -> str:
@@ -28,9 +28,9 @@ def test_patch_word_writes_little_endian():
     patched = _patch_word(lines, addr, 0x00000000)
 
     data_line = [l for l in patched if l.startswith(":") and l[7:9] == "00"][-1]
-    data_bytes = bytes.fromhex(data_line[9:9 + int(data_line[1:3], 16) * 2])
+    data_bytes = bytes.fromhex(data_line[9 : 9 + int(data_line[1:3], 16) * 2])
     off = addr - (addr - 4)
-    assert data_bytes[off:off+4] == b"\x00\x00\x00\x00"
+    assert data_bytes[off : off + 4] == b"\x00\x00\x00\x00"
 
 
 def test_patch_word_raises_if_address_not_found():

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-voltu_devtools.xc32.merge_hex — Merge bootloader + app HEX into a single image.
+microchip_devtools.xc32.merge_hex — Merge bootloader + app HEX into a single image.
 
 Optionally patches:
   - A signature word at a given physical address (for bootloader app-valid checks)
   - DEVCFG0 config bits to enable EJTAG debugging (PIC32MK-specific)
 
 Usage:
-    voltu-merge-hex boot.hex app.hex out.hex [options]
+    mchp-merge-hex boot.hex app.hex out.hex [options]
 
 Options:
     --sig-addr ADDR     Physical address to write the signature word (hex, e.g. 0x1D0FFFF8)
