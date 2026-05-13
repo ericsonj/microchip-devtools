@@ -30,4 +30,5 @@ COMMON_DEFAULTS: dict[str, str] = {
     "DFP_PATH": "~/.mchp_packs/Microchip/PIC32MK-MC_DFP/1.12.263",
     "IPE_CMD": "/opt/microchip/mplabx/v6.25/mplab_platform/mplab_ipe/ipecmd.sh",
     "PROGRAMMER": "PK5",
+    "MPLAB_IDE": "",
 }

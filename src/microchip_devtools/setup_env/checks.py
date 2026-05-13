@@ -155,6 +155,34 @@ def check_programmer(value: str) -> bool:
     return False
 
 
+def check_mplab_ide(mplab_ide: str | None, env_file: Path) -> bool:
+    def _try_path(path: str) -> bool:
+        if Path(path).is_file():
+            _pass(f"MPLAB X IDE  ({path})")
+            return True
+        return False
+
+    if mplab_ide and _try_path(mplab_ide):
+        return True
+
+    msg = (
+        f"MPLAB X IDE not found: {mplab_ide}"
+        if mplab_ide
+        else "MPLAB_IDE environment variable is not set"
+    )
+    _warn(
+        "MPLAB X IDE",
+        f"{msg}\n"
+        "           Required for mcc-refresh. Set MPLAB_IDE in .env.\n"
+        "           Example: MPLAB_IDE=/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide",
+    )
+    new_path = prompt_path("MPLAB X IDE binary", "MPLAB_IDE")
+    if new_path and _try_path(new_path):
+        offer_save_to_env("MPLAB_IDE", new_path, env_file)
+        return True
+    return False
+
+
 def check_boot_hex(boot_hex: str, env_file: Path) -> bool:
     def _try_path(path: str) -> bool:
         if Path(path).is_file():

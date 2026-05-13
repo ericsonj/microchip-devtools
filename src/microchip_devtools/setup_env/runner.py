@@ -30,11 +30,13 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from microchip_devtools.setup_env._ui import console
+from microchip_devtools.setup_env.defaults import PROGRAMMER_VALUES
 from microchip_devtools.setup_env.checks import (
     check_boot_hex,
     check_cppcheck,
     check_dfp,
     check_make,
+    check_mplab_ide,
     check_poetry,
     check_programmer,
     check_python,
@@ -46,6 +48,7 @@ _ENV_DESCRIPTIONS: dict[str, str] = {
     "XC32_PATH": "Path to Microchip XC32 toolchain bin/ directory",
     "DFP_PATH": "Path to the Device Family Pack (DFP) root directory",
     "IPE_CMD": "Path to the MPLAB IPE command-line script (ipecmd.sh)",
+    "MPLAB_IDE": "Path to the MPLAB X IDE binary (mplab_ide) — required for mcc-refresh",
     "BOOT_HEX": "Path to the bootloader .hex file used by the flash-with-boot target",
     "PROGRAMMER": "Programmer/debugger tool short name (e.g. PK5, ICD4, SNAP)",
 }
@@ -78,6 +81,7 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
         results.append(check_xc32(_resolve("XC32_PATH", defaults), env_file))
     if "DFP_PATH" in defaults:
         results.append(check_dfp(_resolve("DFP_PATH", defaults), env_file))
+    results.append(check_mplab_ide(_resolve("MPLAB_IDE", defaults) or None, env_file))
     if "BOOT_HEX" in defaults:
         results.append(check_boot_hex(_resolve("BOOT_HEX", defaults), env_file))
     if "PROGRAMMER" in defaults:
@@ -183,11 +187,27 @@ def _prompt_env_form(defaults: dict[str, str], env_file: Path) -> None:
         desc = _ENV_DESCRIPTIONS.get(key, "")
         if desc:
             console.print(f"  [dim]{desc}[/dim]")
-        value = Prompt.ask(
-            f"  [bold cyan]{key}[/bold cyan]",
-            default=default,
-            console=console,
-        )
+        if key == "PROGRAMMER":
+            choices = list(PROGRAMMER_VALUES.keys())
+            prog_table = Table(show_header=False, box=None, padding=(0, 2), show_edge=False)
+            prog_table.add_column(style="bold cyan")
+            prog_table.add_column(style="dim")
+            for short, full in PROGRAMMER_VALUES.items():
+                marker = "[green]◀ current[/green]" if short == default else ""
+                prog_table.add_row(f"{short} → {full}", marker)
+            console.print(prog_table)
+            value = Prompt.ask(
+                f"  [bold cyan]{key}[/bold cyan]",
+                choices=choices,
+                default=default,
+                console=console,
+            )
+        else:
+            value = Prompt.ask(
+                f"  [bold cyan]{key}[/bold cyan]",
+                default=default,
+                console=console,
+            )
         chosen[key] = value if value != default else None
         console.print()
 

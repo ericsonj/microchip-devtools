@@ -39,11 +39,25 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from rich.console import Console
+
 from microchip_devtools._project import project_name as _env_project_name
 from microchip_devtools._project import project_root as _env_project_root
 
-_DEFAULT_MPLAB = "/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide"
 _DEFAULT_MERGE_TOOL = "meld"
+_console = Console(stderr=True)
+
+
+def _resolve_mplab_ide() -> Path:
+    val = os.environ.get("MPLAB_IDE")
+    if not val:
+        _console.print(
+            "[bold red]Error:[/bold red] [yellow]MPLAB_IDE[/yellow] environment variable is not set.\n"
+            "Define it before running this command. Example:\n\n"
+            "  [cyan]export MPLAB_IDE=/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide[/cyan]"
+        )
+        sys.exit(1)
+    return Path(val)
 
 
 def log(msg: str) -> None:
@@ -68,9 +82,13 @@ def _build_paths(root: Path, name: str) -> dict[str, Path]:
 
 
 def preflight(args: argparse.Namespace, paths: dict[str, Path], root: Path) -> None:
-    mplab_ide = Path(os.environ.get("MPLAB_IDE", _DEFAULT_MPLAB))
     merge_tool = os.environ.get("MCC_MERGE_TOOL", _DEFAULT_MERGE_TOOL)
     errors: list[str] = []
+
+    if not args.skip_launch:
+        mplab_ide = _resolve_mplab_ide()
+    else:
+        mplab_ide = None
 
     if not paths["generated_dir"].is_dir():
         errors.append(
@@ -80,7 +98,7 @@ def preflight(args: argparse.Namespace, paths: dict[str, Path], root: Path) -> N
     if not paths["mcc_config"].exists():
         errors.append(f"MCC config not found: {paths['mcc_config'].relative_to(root)}")
 
-    if not args.skip_launch and not mplab_ide.exists():
+    if not args.skip_launch and mplab_ide is not None and not mplab_ide.exists():
         errors.append(
             f"MPLAB X IDE not found: {mplab_ide}\n"
             "  Set MPLAB_IDE env var or use --skip-launch if IDE is already open."
@@ -144,7 +162,7 @@ def clean(dry_run: bool, paths: dict[str, Path], root: Path) -> None:
 
 
 def launch_mplab(dry_run: bool, paths: dict[str, Path], root: Path) -> Optional[subprocess.Popen]:  # type: ignore[type-arg]
-    mplab_ide = Path(os.environ.get("MPLAB_IDE", _DEFAULT_MPLAB))
+    mplab_ide = _resolve_mplab_ide()
     cmd = [str(mplab_ide), "--open", str(paths["mcc_project"]), "--nosplash"]
 
     if dry_run:
