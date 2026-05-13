@@ -1,6 +1,6 @@
 [project]
 name = "microchip-devtools"
-version = "0.1.2"
+version = "0.1.3"
 description = "Shared build and dev environment scripts for Microchip firmware projects"
 authors = [{ name = "Ericson Joseph", email = "joseph.ericson@allthings.me" }]
 requires-python = ">=3.10,<4.0"
