@@ -180,27 +180,34 @@ def check_mplab_ide(mplab_ide: str | None, env_file: Path) -> bool:
     if new_path and _try_path(new_path):
         offer_save_to_env("MPLAB_IDE", new_path, env_file)
         return True
+    return not mplab_ide  # not configured = optional pass; configured-but-wrong = fail
+
+
+def check_file_exists(key: str, path: str, env_file: Path, optional: bool = True) -> bool:
+    if path and Path(path).is_file():
+        _pass(f"{key}  ({path})")
+        return True
+
+    if not path:
+        return optional
+
+    _warn(
+        key,
+        f"File not found: {path}\n"
+        f"           Set {key} in .env to point to an existing file.",
+    )
+    new_path = prompt_path(f"{key} file path", key)
+    if new_path and Path(new_path).is_file():
+        _pass(f"{key}  ({new_path})")
+        offer_save_to_env(key, new_path, env_file)
+        return True
     return False
 
 
-def check_boot_hex(boot_hex: str, env_file: Path) -> bool:
-    def _try_path(path: str) -> bool:
-        if Path(path).is_file():
-            _pass(f"Boot HEX  ({path})")
-            return True
-        return False
-
-    if _try_path(boot_hex):
+def check_valid_string(key: str, value: str, allowed: list[str]) -> bool:
+    if value in allowed:
+        _pass(f"{key}  ({value})")
         return True
-
-    _warn(
-        "Boot HEX",
-        f"File not found: {boot_hex}\n"
-        "           Required for the 'flash-with-boot' target. Build the bootloader first,\n"
-        "           or set BOOT_HEX in .env to point to an existing file.",
-    )
-    new_path = prompt_path("Bootloader .hex file", "BOOT_HEX")
-    if new_path and _try_path(new_path):
-        offer_save_to_env("BOOT_HEX", new_path, env_file)
-        return True
+    opts = "  ".join(sorted(allowed))
+    _fail(key, f"Unknown value: {value!r}\n           Valid options: {opts}")
     return False

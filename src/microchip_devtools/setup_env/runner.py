@@ -32,16 +32,21 @@ from rich.table import Table
 from microchip_devtools.setup_env._ui import console
 from microchip_devtools.setup_env.defaults import PROGRAMMER_VALUES
 from microchip_devtools.setup_env.checks import (
-    check_boot_hex,
     check_cppcheck,
     check_dfp,
+    check_file_exists,
     check_make,
     check_mplab_ide,
     check_poetry,
     check_programmer,
     check_python,
     check_uncrustify,
+    check_valid_string,
     check_xc32,
+)
+from microchip_devtools.setup_env.foreign_vars import (
+    CheckType,
+    FOREIGN_VAR_REGISTRY,
 )
 
 _ENV_DESCRIPTIONS: dict[str, str] = {
@@ -49,9 +54,9 @@ _ENV_DESCRIPTIONS: dict[str, str] = {
     "DFP_PATH": "Path to the Device Family Pack (DFP) root directory",
     "IPE_CMD": "Path to the MPLAB IPE command-line script (ipecmd.sh)",
     "MPLAB_IDE": "Path to the MPLAB X IDE binary (mplab_ide) — required for mcc-refresh",
-    "BOOT_HEX": "Path to the bootloader .hex file used by the flash-with-boot target",
     "PROGRAMMER": "Programmer/debugger tool short name (e.g. PK5, ICD4, SNAP)",
 }
+_ENV_DESCRIPTIONS.update({var.key: var.description for var in FOREIGN_VAR_REGISTRY})
 
 
 def _load_dotenv(env_file: Path) -> None:
@@ -82,8 +87,14 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
     if "DFP_PATH" in defaults:
         results.append(check_dfp(_resolve("DFP_PATH", defaults), env_file))
     results.append(check_mplab_ide(_resolve("MPLAB_IDE", defaults) or None, env_file))
-    if "BOOT_HEX" in defaults:
-        results.append(check_boot_hex(_resolve("BOOT_HEX", defaults), env_file))
+    for var in FOREIGN_VAR_REGISTRY:
+        if var.key not in defaults:
+            continue
+        value = _resolve(var.key, defaults)
+        if var.check_type == CheckType.FILE_EXISTS:
+            results.append(check_file_exists(var.key, value, env_file, var.optional))
+        elif var.check_type == CheckType.VALID_STRING:
+            results.append(check_valid_string(var.key, value, var.allowed_values))
     if "PROGRAMMER" in defaults:
         results.append(check_programmer(_resolve("PROGRAMMER", defaults)))
 
@@ -95,7 +106,7 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
         console.print(
             Panel(
                 f"[green]✔ All {total} checks passed. The project is ready to build.[/green]\n"
-                f"  Run [bold]make[/bold] or [bold]poetry run setup install[/bold] to continue.",
+                f"  Run [bold]make[/bold] or [bold]poetry run setup env[/bold] to confirm your environment.",
                 border_style="green",
                 padding=(0, 2),
             )
@@ -105,7 +116,7 @@ def check(defaults: dict[str, str], env_file: Path) -> bool:
         console.print(
             Panel(
                 f"[red]✗ {failed} of {total} checks failed.[/red]\n"
-                f"  Fix the issues above, then run [bold]poetry run setup check[/bold] again.",
+                f"  Fix the issues above, then run [bold]poetry run setup init-env --force[/bold] again.",
                 border_style="red",
                 padding=(0, 2),
             )
@@ -189,7 +200,9 @@ def _prompt_env_form(defaults: dict[str, str], env_file: Path) -> None:
             console.print(f"  [dim]{desc}[/dim]")
         if key == "PROGRAMMER":
             choices = list(PROGRAMMER_VALUES.keys())
-            prog_table = Table(show_header=False, box=None, padding=(0, 2), show_edge=False)
+            prog_table = Table(
+                show_header=False, box=None, padding=(0, 2), show_edge=False
+            )
             prog_table.add_column(style="bold cyan")
             prog_table.add_column(style="dim")
             for short, full in PROGRAMMER_VALUES.items():
