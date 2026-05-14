@@ -17,6 +17,7 @@ COMMANDS = [
     ("format", "Format C/H source files with uncrustify"),
     ("mcc-refresh", "Force full MCC regeneration workflow"),
     ("check-peripheral", "Validate MCC-generated peripheral config files"),
+    ("check-clock", "Validate clock/oscillator configuration (MCC + #pragma config)"),
     ("parse-hardware", "Show hardware config parsed from Harmony YML files"),
     ("sync-mplab", "Sync MPLAB X project files"),
 ]

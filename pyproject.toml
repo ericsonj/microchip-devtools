@@ -25,6 +25,7 @@ merge-hex = "microchip_devtools.xc32.merge_hex:main"
 format = "microchip_devtools.format.uncrustify:main"
 mcc-refresh = "microchip_devtools.mcc.mcc_refresh:main"
 check-peripheral = "microchip_devtools.mcc.check_peripheral:main"
+check-clock = "microchip_devtools.mcc.check_clock:main"
 parse-hardware = "microchip_devtools.mcc.parse_hardware:main"
 sync-mplab = "microchip_devtools.mplab.sync_mplab:main"
 
