@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv as _load_dotenv
 from rich.console import Console
 
 from microchip_devtools._project import project_name as _env_project_name
@@ -49,12 +50,13 @@ _console = Console(stderr=True)
 
 
 def _resolve_mplab_ide() -> Path:
-    val = os.environ.get("MPLAB_IDE")
+    raw = os.environ.get("MPLAB_IDE", "")
+    val = os.path.expandvars(os.path.expanduser(raw)).strip()
     if not val:
         _console.print(
             "[bold red]Error:[/bold red] [yellow]MPLAB_IDE[/yellow] environment variable is not set.\n"
-            "Define it before running this command. Example:\n\n"
-            "  [cyan]export MPLAB_IDE=/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide[/cyan]"
+            "Define it in your shell or in [cyan].env[/cyan]. Example:\n\n"
+            "  [cyan]MPLAB_IDE=/opt/microchip/mplabx/v6.25/mplab_platform/bin/mplab_ide[/cyan]"
         )
         sys.exit(1)
     return Path(val)
@@ -71,11 +73,14 @@ def _count_files(path: Path) -> int:
 def _build_paths(root: Path, name: str) -> dict[str, Path]:
     return {
         "generated_dir": root / "firmware/src/config/default",
-        "flags_dir": root / f"firmware/{name}.X/.generated_files/flags/default",
+        "flags_dir": root / f"firmware/{name}.X/.generated_files",
         "mcc_project": root / f"firmware/{name}.X",
         "mcc_config": root / f"firmware/{name}.X/{name}_default/mcc-config.mc4",
         "success_manifest": root
         / "firmware/src/config/default/harmony-manifest-success.yml",
+        "mcc_manifest_autosave": root / f"firmware/{name}.X/mcc-manifest-autosave.yml",
+        "mcc_manifest_success": root
+        / f"firmware/{name}.X/mcc-manifest-generated-success.yml",
         "log_dir": root / "build/logs",
         "backup_dir": root / "build/backups",
     }
@@ -139,12 +144,12 @@ def backup(dry_run: bool, paths: dict[str, Path], root: Path) -> Optional[Path]:
 
 
 def clean(dry_run: bool, paths: dict[str, Path], root: Path) -> None:
-    tasks = [
+    dirs = [
         (paths["generated_dir"], "generated source tree"),
         (paths["flags_dir"], "MCC hash-tracking flags"),
     ]
 
-    for path, label in tasks:
+    for path, label in dirs:
         count = _count_files(path)
         if not path.exists():
             log(f"Skip (already absent): {label}")
@@ -156,6 +161,21 @@ def clean(dry_run: bool, paths: dict[str, Path], root: Path) -> None:
         else:
             log(f"Deleting {count:>4} files — {label}: {path.relative_to(root)}")
             shutil.rmtree(path)
+
+    manifests = [
+        (paths["mcc_manifest_autosave"], "mcc-manifest-autosave.yml"),
+        (paths["mcc_manifest_success"], "mcc-manifest-generated-success.yml"),
+    ]
+
+    for path, label in manifests:
+        if not path.exists():
+            log(f"Skip (already absent): {label}")
+            continue
+        if dry_run:
+            log(f"[dry-run] Would delete {label}")
+        else:
+            log(f"Deleting {label}")
+            path.unlink()
 
     if not dry_run:
         log("Clean complete")
@@ -325,6 +345,7 @@ def main() -> None:
     args = parser.parse_args()
 
     root = args.root or _env_project_root()
+    _load_dotenv(dotenv_path=root / ".env", override=False)
     name = args.project_name or _env_project_name()
     paths = _build_paths(root, name)
 
