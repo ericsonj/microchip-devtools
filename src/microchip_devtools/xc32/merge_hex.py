@@ -6,20 +6,21 @@ Optionally patches:
   - A signature word at a given physical address (for bootloader app-valid checks)
   - DEVCFG0 config bits to enable EJTAG debugging (PIC32MK-specific)
 
-Usage (ELF-first, no hex value args needed):
-    merge-hex --boot-elf boot.elf --app-elf app.elf -o out.hex
+Usage (boot ELF + prepared app HEX):
+    merge-hex --boot-elf boot.elf --app-hex app_prepared.hex -o out.hex
 
 Usage (legacy HEX positional):
     merge-hex boot.hex app.hex out.hex [options]
 
 Options:
     --boot-elf FILE     Bootloader ELF — auto-generates .hex if absent, auto-detects --ejtag-addr
-    --app-elf FILE      App ELF — auto-generates .hex if absent
+    --app-hex FILE      App HEX already post-processed with srec_cat fill/crop
     -o / --output FILE  Output file (named alternative to positional out)
     --sig-addr ADDR     Physical address to write the signature word (hex, e.g. 0x1D0FFFF8)
     --sig-word VALUE    Signature word value (hex, default: 0x00000000)
     --ejtag-addr ADDR   Physical address of DEVCFG0 config word for EJTAG enable (optional)
-If --sig-addr is omitted, no signature patch is applied.
+If --sig-addr is omitted, no signature patch is applied, except in --app-hex mode
+where the bootloader app-valid signature defaults to 0x1D0FFFF8.
 If --ejtag-addr is omitted (and not auto-detected from ELF), no DEVCFG0 patch is applied.
 XC32 tool paths resolved via XC32_PATH env var (points to bin/ directory).
 """
@@ -29,7 +30,28 @@ import os
 import re
 import sys
 
+from rich.console import Console
+
 END_RECORD = ":00000001FF"
+
+_APP_HEX_FILL_START = 0x1D010200
+_APP_HEX_FILL_END = 0x1D0FFFFC
+_APP_HEX_CROP_END = 0x1D100000
+_APP_SIGNATURE_ADDR = 0x1D0FFFF8
+
+_con = Console(highlight=False)
+_err = Console(stderr=True, highlight=False)
+
+
+def _verbose_print(verbose: bool, message: str) -> None:
+    if verbose:
+        _con.print(message, markup=False)
+
+
+def _fail(message: str) -> None:
+    _err.print(f"[red][ERROR][/red] {message}")
+    sys.exit(1)
+
 
 # --- Linker script parsing ---------------------------------------------------
 
@@ -88,6 +110,104 @@ _DEVCFG0_JTAGEN_BIT = 0x00000004
 
 def _ihex_checksum(record_bytes: list[int]) -> int:
     return (~sum(record_bytes) + 1) & 0xFF
+
+
+def _parse_ihex_record(line: str, line_no: int) -> tuple[int, int, int, bytes]:
+    stripped = line.strip()
+    if not stripped.startswith(":"):
+        raise RuntimeError(f"line {line_no}: Intel HEX record must start with ':'")
+
+    try:
+        byte_count = int(stripped[1:3], 16)
+        addr_offset = int(stripped[3:7], 16)
+        record_type = int(stripped[7:9], 16)
+    except ValueError as exc:
+        raise RuntimeError(f"line {line_no}: invalid Intel HEX header") from exc
+
+    expected_len = 11 + byte_count * 2
+    if len(stripped) != expected_len:
+        raise RuntimeError(
+            f"line {line_no}: byte count expects {expected_len} characters, "
+            f"got {len(stripped)}"
+        )
+
+    try:
+        record_bytes = bytes.fromhex(stripped[1:])
+    except ValueError as exc:
+        raise RuntimeError(f"line {line_no}: invalid hexadecimal data") from exc
+
+    if sum(record_bytes) & 0xFF:
+        raise RuntimeError(f"line {line_no}: invalid Intel HEX checksum")
+
+    data = record_bytes[4:-1]
+    return byte_count, addr_offset, record_type, data
+
+
+def validate_app_hex(app_path: str) -> None:
+    """Validate that *app_path* is a bootloader-ready app Intel HEX image."""
+    if not os.path.exists(app_path):
+        raise RuntimeError(f"app HEX not found: {app_path}")
+
+    with open(app_path, "r", encoding="utf-8") as f:
+        lines = [line.rstrip("\r\n") for line in f]
+
+    if not lines:
+        raise RuntimeError("app HEX is empty")
+
+    current_ela = 0
+    eof_seen = False
+    min_addr: int | None = None
+    max_addr: int | None = None
+    data_records = 0
+
+    for line_no, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if eof_seen:
+            raise RuntimeError(f"line {line_no}: data found after end-of-file record")
+
+        byte_count, addr_offset, record_type, data = _parse_ihex_record(line, line_no)
+
+        if record_type == 0x00:
+            if byte_count == 0:
+                continue
+            base_addr = (current_ela << 16) | addr_offset
+            end_addr = base_addr + byte_count
+            if base_addr < _APP_HEX_FILL_START or end_addr > _APP_HEX_CROP_END:
+                raise RuntimeError(
+                    f"line {line_no}: app data range 0x{base_addr:08X}-0x{end_addr - 1:08X} "
+                    f"is outside prepared merge window 0x{_APP_HEX_FILL_START:08X}-"
+                    f"0x{_APP_HEX_CROP_END - 1:08X}"
+                )
+            min_addr = base_addr if min_addr is None else min(min_addr, base_addr)
+            max_addr = end_addr if max_addr is None else max(max_addr, end_addr)
+            data_records += 1
+        elif record_type == 0x01:
+            if byte_count != 0 or addr_offset != 0:
+                raise RuntimeError(f"line {line_no}: malformed end-of-file record")
+            eof_seen = True
+        elif record_type == 0x04:
+            if byte_count != 2 or addr_offset != 0:
+                raise RuntimeError(
+                    f"line {line_no}: malformed extended linear address record"
+                )
+            current_ela = int.from_bytes(data, "big")
+        else:
+            raise RuntimeError(
+                f"line {line_no}: unsupported Intel HEX record type 0x{record_type:02X}"
+            )
+
+    if not eof_seen:
+        raise RuntimeError("app HEX is missing the end-of-file record")
+    if data_records == 0 or min_addr is None or max_addr is None:
+        raise RuntimeError("app HEX contains no data records")
+    if min_addr != _APP_HEX_FILL_START or max_addr < _APP_HEX_FILL_END:
+        raise RuntimeError(
+            "app HEX does not look post-processed for bootloader merge; "
+            f"expected filled/cropped coverage from 0x{_APP_HEX_FILL_START:08X} "
+            f"through at least 0x{_APP_HEX_FILL_END - 1:08X}, got "
+            f"0x{min_addr:08X}-0x{max_addr - 1:08X}"
+        )
 
 
 def _patch_word(lines: list[str], addr: int, word: int) -> list[str]:
@@ -167,7 +287,9 @@ def _patch_word(lines: list[str], addr: int, word: int) -> list[str]:
     return result
 
 
-def _patch_devcfg0_ejtag(lines: list[str], devcfg0_addr: int) -> list[str]:
+def _patch_devcfg0_ejtag(
+    lines: list[str], devcfg0_addr: int, verbose: bool = False
+) -> list[str]:
     """Enable EJTAG in the DEVCFG0 config word at *devcfg0_addr*.
 
     Clears DEBUG[1:0] (bits 1:0) and sets JTAGEN (bit 2).
@@ -230,17 +352,18 @@ def _patch_devcfg0_ejtag(lines: list[str], devcfg0_addr: int) -> list[str]:
             )
             patched = True
 
-            print(
+            _verbose_print(
+                verbose,
                 f"[merge_hex] DEVCFG0 : 0x{orig:08X} → 0x{word:08X}  "
-                f"(JTAGEN=ON, DEBUG=ON) at phys 0x{devcfg0_addr:08X}"
+                f"(JTAGEN=ON, DEBUG=ON) at phys 0x{devcfg0_addr:08X}",
             )
         else:
             result.append(line)
 
     if not patched:
         raise RuntimeError(
-            f"[merge_hex] ERROR: DEVCFG0 at 0x{devcfg0_addr:08X} not found.\n"
-            f"             The bootloader HEX must include config word records."
+            f"DEVCFG0 at 0x{devcfg0_addr:08X} not found. "
+            "The bootloader HEX must include config word records."
         )
 
     return result
@@ -253,14 +376,12 @@ def merge(
     sig_addr: int | None = None,
     sig_word: int = 0x00000000,
     ejtag_addr: int | None = None,
+    verbose: bool = False,
 ) -> None:
     if not os.path.exists(boot_path):
-        sys.exit(f"[merge_hex] ERROR: bootloader HEX not found: {boot_path}")
+        _fail(f"bootloader HEX not found: {boot_path}")
     if not os.path.exists(app_path):
-        sys.exit(
-            f"[merge_hex] ERROR: app HEX not found: {app_path}\n"
-            f"             Run 'make' first to build the app."
-        )
+        _fail(f"app HEX not found: {app_path}")
 
     with open(boot_path, "r", encoding="utf-8") as f:
         boot_lines = [l.rstrip("\r\n") for l in f]
@@ -273,21 +394,28 @@ def merge(
 
     if sig_addr is not None:
         merged = _patch_word(merged, sig_addr, sig_word)
-        print(
-            f"[merge_hex] signed  : 0x{sig_word:08X} written at phys 0x{sig_addr:08X}"
+        _verbose_print(
+            verbose,
+            f"[merge_hex] signed  : 0x{sig_word:08X} written at phys 0x{sig_addr:08X}",
         )
 
     if ejtag_addr is not None:
-        merged = _patch_devcfg0_ejtag(merged, ejtag_addr)
+        merged = _patch_devcfg0_ejtag(merged, ejtag_addr, verbose=verbose)
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w", newline="\n", encoding="utf-8") as f:
         for line in merged:
             f.write(line + "\n")
 
-    print(f"[merge_hex] boot    : {boot_path}  ({len(boot_stripped)} records)")
-    print(f"[merge_hex] app     : {app_path}  ({len(app_lines)} records)")
-    print(f"[merge_hex] output  : {out_path}  ({len(merged)} records total)")
+    _verbose_print(
+        verbose, f"[merge_hex] boot    : {boot_path}  ({len(boot_stripped)} records)"
+    )
+    _verbose_print(
+        verbose, f"[merge_hex] app     : {app_path}  ({len(app_lines)} records)"
+    )
+    _verbose_print(
+        verbose, f"[merge_hex] output  : {out_path}  ({len(merged)} records total)"
+    )
 
 
 def main() -> None:
@@ -304,10 +432,10 @@ def main() -> None:
         help="Bootloader ELF — auto-generates .hex if absent, auto-detects --ejtag-addr.",
     )
     parser.add_argument(
-        "--app-elf",
+        "--app-hex",
         default=None,
         metavar="FILE",
-        help="App ELF — auto-generates .hex if absent.",
+        help="App HEX already post-processed with srec_cat fill/crop for bootloader merge.",
     )
     parser.add_argument(
         "-o",
@@ -338,32 +466,45 @@ def main() -> None:
         metavar="ADDR",
         help="Physical address of DEVCFG0 for EJTAG enable (e.g. 0x1FC03FCC). Omit to skip.",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable detailed merge diagnostics.",
+    )
     args = parser.parse_args()
 
-    # --- ELF-first resolution -------------------------------------------
-    if args.boot_elf or args.app_elf:
-        from microchip_devtools.xc32.elf_utils import (
-            detect_devcfg0_from_elf,
-            ensure_hex,
-        )
+    from microchip_devtools.xc32.elf_utils import (
+        detect_devcfg0_from_elf,
+        ensure_hex,
+    )
 
+    # --- ELF/HEX-first resolution -------------------------------------------
     if args.boot_elf:
         args.boot = ensure_hex(args.boot_elf)
         if args.ejtag_addr is None:
             args.ejtag_addr = detect_devcfg0_from_elf(args.boot_elf)
             if args.ejtag_addr is not None:
-                print(
-                    f"[merge_hex] auto ejtag-addr: 0x{args.ejtag_addr:08X}  (from ELF sections)"
+                _verbose_print(
+                    args.verbose,
+                    f"[merge_hex] auto ejtag-addr: 0x{args.ejtag_addr:08X}  (from ELF sections)",
                 )
 
-    if args.app_elf:
-        args.app = ensure_hex(args.app_elf)
+    if args.app_hex:
+        args.app = args.app_hex
+        if args.sig_addr is None:
+            args.sig_addr = _APP_SIGNATURE_ADDR
+            _verbose_print(
+                args.verbose,
+                f"[merge_hex] auto sig-addr  : 0x{args.sig_addr:08X}  "
+                "(app HEX bootloader signature)",
+            )
 
     # Named -o / --output overrides positional out
     if args.output is not None:
         args.out = args.output
 
-    # --- Validate required args -----------------------------------------
+    # --- Validate required args ---------------------------------------------
     missing = [
         name
         for name, val in (("boot", args.boot), ("app", args.app), ("out", args.out))
@@ -372,17 +513,23 @@ def main() -> None:
     if missing:
         parser.error(
             f"Missing required argument(s): {', '.join(missing)}.\n"
-            "Provide positional boot/app/out or use --boot-elf/--app-elf/-o."
+            "Provide positional boot/app/out or use --boot-elf/--app-hex/-o."
         )
 
-    merge(
-        args.boot,
-        args.app,
-        args.out,
-        sig_addr=args.sig_addr,
-        sig_word=args.sig_word,
-        ejtag_addr=args.ejtag_addr,
-    )
+    try:
+        if args.app_hex:
+            validate_app_hex(args.app)
+        merge(
+            args.boot,
+            args.app,
+            args.out,
+            sig_addr=args.sig_addr,
+            sig_word=args.sig_word,
+            ejtag_addr=args.ejtag_addr,
+            verbose=args.verbose,
+        )
+    except RuntimeError as exc:
+        _fail(str(exc))
 
 
 if __name__ == "__main__":

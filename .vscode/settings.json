@@ -38,5 +38,8 @@
     "**/.mypy_cache": true,
     "**/.ruff_cache": true,
     "**/.pylint.d": true
-  }
+  },
+  "folder-color.pathColors": [],
+  "python-envs.defaultEnvManager": "ms-python.python:poetry",
+  "python-envs.defaultPackageManager": "ms-python.python:poetry"
 }
