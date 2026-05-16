@@ -146,11 +146,62 @@ def update_include_dirs(
                 prop.set("value", value)
 
 
+def _serialize_element(el: ET.Element, depth: int, indent: str = "  ") -> list[str]:
+    """Serialize an XML element with MPLAB X-compatible attribute formatting.
+
+    MPLAB X wraps attributes onto separate lines (aligned to first-attr column)
+    when the full single-line tag would exceed 80 characters.
+    """
+    base = indent * depth
+    tag = el.tag
+    attr_pairs = [f'{k}="{v}"' for k, v in el.attrib.items()]
+
+    has_children = len(el) > 0
+    has_text = bool(el.text and el.text.strip())
+    self_close = not has_children and not has_text
+
+    close_char = "/>" if self_close else ">"
+
+    if not attr_pairs:
+        open_tag = f"{base}<{tag}{close_char}"
+    elif len(attr_pairs) == 1:
+        open_tag = f"{base}<{tag} {attr_pairs[0]}{close_char}"
+    else:
+        single_line = f"{base}<{tag} {' '.join(attr_pairs)}{close_char}"
+        if len(single_line) <= 80:
+            open_tag = single_line
+        else:
+            cont = " " * (len(base) + len(tag) + 2)  # align to first attr
+            first, *rest = attr_pairs
+            lines_parts = [f"{base}<{tag} {first}"]
+            for attr in rest[:-1]:
+                lines_parts.append(f"{cont}{attr}")
+            lines_parts.append(f"{cont}{rest[-1]}{close_char}")
+            open_tag = "\n".join(lines_parts)
+
+    lines: list[str] = []
+
+    if self_close:
+        lines.append(open_tag)
+        return lines
+
+    if has_text and not has_children:
+        lines.append(f"{open_tag}{(el.text or '').strip()}</{tag}>")
+        return lines
+
+    lines.append(open_tag)
+    for child in el:
+        lines.extend(_serialize_element(child, depth + 1, indent))
+    lines.append(f"{base}</{tag}>")
+    return lines
+
+
 def write_xml(tree: ET.ElementTree, path: Path) -> None:
-    ET.indent(tree.getroot(), space="  ")
-    xml_body = ET.tostring(tree.getroot(), encoding="unicode", xml_declaration=False).replace(" />", "/>")
+    root = tree.getroot()
+    assert root is not None
+    lines = _serialize_element(root, depth=0)
     path.write_text(
-        '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body + "\n",
+        '<?xml version="1.0" encoding="UTF-8"?>\n' + "\n".join(lines) + "\n",
         encoding="utf-8",
     )
 

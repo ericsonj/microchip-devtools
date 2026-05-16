@@ -7,6 +7,7 @@ import pytest
 
 from microchip_devtools.mplab.sync_mplab import (
     FolderNode,
+    _serialize_element,
     build_source_tree,
     parse_srcs_mk,
     to_mplab_rel,
@@ -279,6 +280,90 @@ def test_update_include_dirs_deduplicates(tmp_path, monkeypatch):
         prop = section.find("property[@key='extra-include-directories']")
         parts = prop.get("value").split(";")
         assert len(parts) == len(set(parts))
+
+
+# ---------------------------------------------------------------------------
+# _serialize_element — MPLAB X attribute formatting
+# ---------------------------------------------------------------------------
+
+def test_serialize_short_tag_stays_single_line():
+    el = ET.fromstring('<logicalFolder name="root" displayName="root" projectFiles="true"/>')
+    lines = _serialize_element(el, depth=0)
+    assert len(lines) == 1
+    assert 'name="root"' in lines[0]
+    assert 'displayName="root"' in lines[0]
+
+
+def test_serialize_long_tag_wraps_attributes():
+    # Single-line would be: "    <logicalFolder name="HeaderFilesLongName" displayName="Header Files Long" projectFiles="true"/>"
+    # = 4 + 93 = 97 chars → wraps; but serializer returns one string with \n, not multiple list items
+    el = ET.fromstring(
+        '<logicalFolder name="HeaderFilesLongName" displayName="Header Files Long" projectFiles="true"/>'
+    )
+    lines = _serialize_element(el, depth=2)  # 4-space base
+    assert len(lines) == 1
+    text = lines[0]
+    assert "\n" in text, "Long tag must wrap to multiple lines (embedded \\n)"
+    parts = text.split("\n")
+    cont_indent = "    " + " " * len("<logicalFolder ")  # depth=2 → 4 spaces + 15
+    for part in parts[1:]:
+        assert part.startswith(cont_indent), f"Misaligned continuation: {part!r}"
+
+
+def test_serialize_continuation_aligns_to_tag_name_length():
+    el = ET.fromstring(
+        '<logicalFolder name="PRG-IDU-BOOT_pic32mk_mcm_curiosity_pro"'
+        ' displayName="PRG-IDU-BOOT_pic32mk_mcm_curiosity_pro" projectFiles="true"/>'
+    )
+    lines = _serialize_element(el, depth=3)  # 6-space base
+    assert len(lines) == 1
+    text = lines[0]
+    assert "\n" in text
+    expected_cont = "      " + " " * len("<logicalFolder ")
+    for part in text.split("\n")[1:]:
+        assert part.startswith(expected_cont)
+
+
+def test_serialize_property_long_value_wraps():
+    long_value = ";".join(f"../src/path{i}" for i in range(15))
+    el = ET.fromstring(f'<property key="extra-include-directories" value="{long_value}"/>')
+    lines = _serialize_element(el, depth=4)  # 8-space base
+    assert len(lines) == 1
+    text = lines[0]
+    assert "\n" in text
+    cont_indent = "        " + " " * len("<property ")
+    parts = text.split("\n")
+    assert parts[1].startswith(cont_indent)
+
+
+def test_serialize_self_closing_empty_element():
+    el = ET.fromstring("<targetHeader/>")
+    lines = _serialize_element(el, depth=2)
+    assert lines == ["    <targetHeader/>"]
+
+
+def test_serialize_text_element_inline():
+    el = ET.fromstring("<itemPath>../src/app/app.c</itemPath>")
+    lines = _serialize_element(el, depth=3)
+    assert lines == ["      <itemPath>../src/app/app.c</itemPath>"]
+
+
+def test_serialize_no_partial_wrap():
+    # Verify all-or-nothing rule: wrapped tag emits \n-separated parts,
+    # first part has no closing >, last part ends with />
+    el = ET.fromstring(
+        '<logicalFolder name="VeryLongFolderNameThatWillDefinitelyPushPastEightyCharsForSure"'
+        ' displayName="Very Long Display Name That Is Also Quite Long" projectFiles="true"/>'
+    )
+    lines = _serialize_element(el, depth=0)
+    assert len(lines) == 1
+    text = lines[0]
+    assert "\n" in text
+    parts = text.split("\n")
+    assert parts[-1].endswith("/>")
+    for mid in parts[1:-1]:
+        assert not mid.endswith(">")
+        assert not mid.endswith("/>")
 
 
 # ---------------------------------------------------------------------------
