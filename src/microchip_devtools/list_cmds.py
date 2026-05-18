@@ -20,6 +20,7 @@ COMMANDS = [
     ("check-clock", "Validate clock/oscillator configuration (MCC + #pragma config)"),
     ("parse-hardware", "Show hardware config parsed from Harmony YML files"),
     ("sync-mplab", "Sync MPLAB X project files"),
+    ("check-clangd", "Check Clangd configuration and diagnostics"),
 ]
 
 
