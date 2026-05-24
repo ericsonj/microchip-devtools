@@ -10,6 +10,7 @@ Run from the workspace root AFTER `make` has regenerated srcs.mk.
 Project name is read from VOLTU_PROJECT_NAME env var (fallback: cwd name).
 """
 
+import argparse
 import os
 import re
 import sys
@@ -62,32 +63,52 @@ class FolderNode:
         self.name = name
         self.children: dict[str, "FolderNode"] = {}
         self.files: list[str] = []
+        # mixed insertion order: ("file", path) | ("folder", name)
+        self._order: list[tuple[str, str]] = []
 
     def add_file(self, rel_parts: list[str], full_path: str) -> None:
         if len(rel_parts) <= 1:
             self.files.append(full_path)
+            self._order.append(("file", full_path))
         else:
             folder_name = rel_parts[0]
             if folder_name not in self.children:
                 self.children[folder_name] = FolderNode(folder_name)
+                self._order.append(("folder", folder_name))
             self.children[folder_name].add_file(rel_parts[1:], full_path)
 
-    def to_xml(self, parent: ET.Element) -> None:
-        for child_name in sorted(self.children):
-            folder_el = ET.SubElement(
-                parent,
-                "logicalFolder",
-                {
-                    "name": child_name,
-                    "displayName": child_name,
-                    "projectFiles": "true",
-                },
-            )
-            self.children[child_name].to_xml(folder_el)
-
-        for file_path in sorted(self.files):
-            item_el = ET.SubElement(parent, "itemPath")
-            item_el.text = file_path
+    def to_xml(self, parent: ET.Element, sort: bool = True) -> None:
+        if sort:
+            for child_name in sorted(self.children):
+                folder_el = ET.SubElement(
+                    parent,
+                    "logicalFolder",
+                    {
+                        "name": child_name,
+                        "displayName": child_name,
+                        "projectFiles": "true",
+                    },
+                )
+                self.children[child_name].to_xml(folder_el, sort=True)
+            for file_path in sorted(self.files):
+                item_el = ET.SubElement(parent, "itemPath")
+                item_el.text = file_path
+        else:
+            for kind, value in self._order:
+                if kind == "folder":
+                    folder_el = ET.SubElement(
+                        parent,
+                        "logicalFolder",
+                        {
+                            "name": value,
+                            "displayName": value,
+                            "projectFiles": "true",
+                        },
+                    )
+                    self.children[value].to_xml(folder_el, sort=False)
+                else:
+                    item_el = ET.SubElement(parent, "itemPath")
+                    item_el.text = value
 
 
 def build_source_tree(csrc_paths: list[str], mplab_project_dir: Path) -> FolderNode:
@@ -102,15 +123,14 @@ def build_source_tree(csrc_paths: list[str], mplab_project_dir: Path) -> FolderN
             i += 1
         rel_parts = parts[i:]
 
-        if len(rel_parts) <= 1:
-            root.files.append(mplab_path)
-        else:
-            root.add_file(rel_parts, mplab_path)
+        root.add_file(rel_parts if len(rel_parts) > 1 else [mplab_path], mplab_path)
 
     return root
 
 
-def update_source_files(xml_root: ET.Element, source_tree: FolderNode) -> None:
+def update_source_files(
+    xml_root: ET.Element, source_tree: FolderNode, sort: bool = True
+) -> None:
     root_folder = xml_root.find(".//logicalFolder[@name='root']")
     if root_folder is None:
         print(
@@ -131,13 +151,17 @@ def update_source_files(xml_root: ET.Element, source_tree: FolderNode) -> None:
     source_folder.set("name", "SourceFiles")
     source_folder.set("displayName", "Source Files")
     source_folder.set("projectFiles", "true")
-    source_tree.to_xml(source_folder)
+    source_tree.to_xml(source_folder, sort=sort)
 
 
 def update_include_dirs(
-    xml_root: ET.Element, inc_dirs: list[str], mplab_project_dir: Path
+    xml_root: ET.Element,
+    inc_dirs: list[str],
+    mplab_project_dir: Path,
+    sort: bool = True,
 ) -> None:
-    mplab_incs = sorted({to_mplab_rel(d, mplab_project_dir) for d in inc_dirs})
+    rels = [to_mplab_rel(d, mplab_project_dir) for d in dict.fromkeys(inc_dirs)]
+    mplab_incs = sorted(rels) if sort else rels
     value = ";".join(mplab_incs)
 
     for tag in ("C32", "C32CPP"):
@@ -207,6 +231,20 @@ def write_xml(tree: ET.ElementTree, path: Path) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Sync pymaketool sources into MPLAB X project."
+    )
+    parser.add_argument(
+        "--preserve-order",
+        action="store_true",
+        help=(
+            "Keep source files in the same order as srcs.mk "
+            "instead of sorting alphabetically."
+        ),
+    )
+    args = parser.parse_args()
+    sort = not args.preserve_order
+
     name = project_name()
     mplab_project_dir, configurations_xml, makefile_default_mk = _paths(name)
 
@@ -224,8 +262,8 @@ def main() -> None:
     xml_root = tree.getroot()
 
     source_tree = build_source_tree(csrc_paths, mplab_project_dir)
-    update_source_files(xml_root, source_tree)
-    update_include_dirs(xml_root, inc_dirs, mplab_project_dir)
+    update_source_files(xml_root, source_tree, sort=sort)
+    update_include_dirs(xml_root, inc_dirs, mplab_project_dir, sort=sort)
     write_xml(tree, configurations_xml)
 
     if makefile_default_mk.exists():

@@ -401,6 +401,7 @@ def test_main_silent_on_success(tmp_path, monkeypatch, capsys):
     _make_workspace(tmp_path, "PRG-TEST")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     main()
     out, err = capsys.readouterr()
     assert out == ""
@@ -411,6 +412,7 @@ def test_main_deletes_makefile_default(tmp_path, monkeypatch):
     paths = _make_workspace(tmp_path, "PRG-TEST")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     assert paths["makefile"].exists()
     main()
     assert not paths["makefile"].exists()
@@ -420,6 +422,7 @@ def test_main_updates_xml(tmp_path, monkeypatch):
     _make_workspace(tmp_path, "PRG-TEST")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     main()
 
     xml_path = tmp_path / "firmware" / "PRG-TEST.X" / "nbproject" / "configurations.xml"
@@ -431,6 +434,7 @@ def test_main_updates_xml(tmp_path, monkeypatch):
 def test_main_missing_configurations_xml_exits(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 1
@@ -442,6 +446,7 @@ def test_main_missing_srcs_mk_exits(tmp_path, monkeypatch, capsys):
     paths["srcs_mk"].unlink()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 1
@@ -453,4 +458,104 @@ def test_main_no_makefile_default_ok(tmp_path, monkeypatch):
     paths["makefile"].unlink()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
     main()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# preserve-order (sort=False)
+# ---------------------------------------------------------------------------
+
+def test_folder_node_to_xml_preserve_order_files():
+    node = FolderNode("SourceFiles")
+    node.add_file(["z.c"], "z.c")
+    node.add_file(["a.c"], "a.c")
+    node.add_file(["m.c"], "m.c")
+    parent = ET.Element("root")
+    node.to_xml(parent, sort=False)
+    items = [el.text for el in parent.findall("itemPath")]
+    assert items == ["z.c", "a.c", "m.c"]
+
+
+def test_folder_node_to_xml_preserve_order_children():
+    node = FolderNode("SourceFiles")
+    node.add_file(["z_module", "z.c"], "z.c")
+    node.add_file(["a_module", "a.c"], "a.c")
+    parent = ET.Element("root")
+    node.to_xml(parent, sort=False)
+    folders = [el.get("name") for el in parent.findall("logicalFolder")]
+    assert folders == ["z_module", "a_module"]
+
+
+def test_folder_node_to_xml_preserve_order_interleaved():
+    # file before folder, then another folder, then file — depth-first must match srcs.mk
+    node = FolderNode("SourceFiles")
+    node.add_file(["app.c"], "../src/app.c")          # flat file first
+    node.add_file(["config", "init.c"], "../src/config/init.c")  # enters subfolder
+    node.add_file(["main.c"], "../src/main.c")         # flat file last
+    parent = ET.Element("root")
+    node.to_xml(parent, sort=False)
+    # children of parent in emission order: itemPath(app.c), logicalFolder(config), itemPath(main.c)
+    tags = [(el.tag, el.text or el.get("name")) for el in parent]
+    assert tags == [
+        ("itemPath", "../src/app.c"),
+        ("logicalFolder", "config"),
+        ("itemPath", "../src/main.c"),
+    ]
+
+
+def test_update_include_dirs_preserve_order(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mplab_dir = tmp_path / "firmware" / "PRG-TEST.X"
+    xml_root = _parse_xml(_CONFIGURATIONS_XML)
+    inc_dirs = ["firmware/src/zzz", "firmware/src/aaa", "firmware/src/mmm"]
+    update_include_dirs(xml_root, inc_dirs, mplab_dir, sort=False)
+
+    for section in xml_root.iter("C32"):
+        prop = section.find("property[@key='extra-include-directories']")
+        parts = prop.get("value").split(";")
+        # order must match srcs.mk order, not alphabetical
+        assert parts[0].endswith("zzz")
+        assert parts[1].endswith("aaa")
+        assert parts[2].endswith("mmm")
+
+
+def test_update_include_dirs_preserve_order_deduplicates(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mplab_dir = tmp_path / "firmware" / "PRG-TEST.X"
+    xml_root = _parse_xml(_CONFIGURATIONS_XML)
+    update_include_dirs(
+        xml_root,
+        ["firmware/src/zzz", "firmware/src/aaa", "firmware/src/zzz"],
+        mplab_dir,
+        sort=False,
+    )
+
+    for section in xml_root.iter("C32"):
+        prop = section.find("property[@key='extra-include-directories']")
+        parts = prop.get("value").split(";")
+        assert len(parts) == len(set(parts))
+        assert parts[0].endswith("zzz")
+        assert parts[1].endswith("aaa")
+
+
+def test_main_preserve_order_flag(tmp_path, monkeypatch):
+    _ORDERED_SRCS_MK = (
+        "CSRC += firmware/src/zzz/zzz.c\n"
+        "CSRC += firmware/src/aaa/aaa.c\n"
+        "INCS += -Ifirmware/src/zzz\n"
+        "INCS += -Ifirmware/src/aaa\n"
+    )
+    ws = _make_workspace(tmp_path, "PRG-TEST")
+    ws["srcs_mk"].write_text(_ORDERED_SRCS_MK, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab", "--preserve-order"])
+    main()
+
+    root = ET.parse(ws["xml"]).getroot()
+    items = [el.text for el in root.findall(".//itemPath")]
+    # zzz must appear before aaa — srcs.mk order preserved
+    assert items.index(next(i for i in items if "zzz" in (i or ""))) < items.index(
+        next(i for i in items if "aaa" in (i or ""))
+    )
