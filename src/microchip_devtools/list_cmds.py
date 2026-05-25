@@ -21,6 +21,10 @@ COMMANDS = [
     ("parse-hardware", "Show hardware config parsed from Harmony YML files"),
     ("sync-mplab", "Sync MPLAB X project files"),
     ("check-clangd", "Check Clangd configuration and diagnostics"),
+    (
+        "compare-builds",
+        "Compare two builds and show differences in symbols, sections, etc.",
+    ),
 ]
 
 
