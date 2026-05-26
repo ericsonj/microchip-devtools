@@ -35,13 +35,15 @@ def _xc32_tool(name: str) -> str:
     xc32_bin = os.environ.get("XC32_PATH", COMMON_DEFAULTS.get("XC32_PATH", ""))
     return os.path.join(xc32_bin, name) if xc32_bin else name
 
+
 console = Console(highlight=False)
-_err    = Console(stderr=True, highlight=False)
+_err = Console(stderr=True, highlight=False)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _resolve_path(cli_val: str | None, env_key: str) -> Path | None:
     v = cli_val or os.environ.get(env_key)
@@ -72,6 +74,7 @@ def _fail(msg: str) -> None:
 # Checks
 # ---------------------------------------------------------------------------
 
+
 def _check_section_sizes(elf_a: Path, elf_b: Path) -> bool:
     console.rule("[bold blue]Section sizes[/bold blue]")
 
@@ -86,7 +89,9 @@ def _check_section_sizes(elf_a: Path, elf_b: Path) -> bool:
         if a[sec] == b[sec]:
             _pass(f".{sec:6s}  {a[sec]:>8} bytes")
         else:
-            _fail(f".{sec:6s}  {a[sec]:>8} bytes  vs  {b[sec]:>8} bytes  (Δ {b[sec]-a[sec]:+d})")
+            _fail(
+                f".{sec:6s}  {a[sec]:>8} bytes  vs  {b[sec]:>8} bytes  (Δ {b[sec]-a[sec]:+d})"
+            )
             passed = False
     return passed
 
@@ -142,9 +147,9 @@ def _check_config_words(hex_a: Path, hex_b: Path) -> bool:
                 if not line.startswith(":"):
                     continue
                 byte_count = int(line[1:3], 16)
-                address    = int(line[3:7], 16)
-                rec_type   = int(line[7:9], 16)
-                data       = bytes.fromhex(line[9:9 + byte_count * 2])
+                address = int(line[3:7], 16)
+                rec_type = int(line[7:9], 16)
+                data = bytes.fromhex(line[9 : 9 + byte_count * 2])
                 if rec_type == 0:
                     abs_addr = base + address
                     if abs_addr not in segments:
@@ -181,6 +186,7 @@ def _check_config_words(hex_a: Path, hex_b: Path) -> bool:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def _run() -> int:
     parser = argparse.ArgumentParser(
         description="Compare two PIC32 firmware builds for functional equivalence.",
@@ -188,10 +194,24 @@ def _run() -> int:
             "Env vars: COMPARE_ELF_A, COMPARE_ELF_B, COMPARE_HEX_A, COMPARE_HEX_B, XC32_PATH"
         ),
     )
-    parser.add_argument("elf_a", nargs="?", default=None, help="First ELF (or set COMPARE_ELF_A)")
-    parser.add_argument("elf_b", nargs="?", default=None, help="Second ELF (or set COMPARE_ELF_B)")
-    parser.add_argument("--hex-a", metavar="HEX_A", default=None, help="First HEX (or set COMPARE_HEX_A)")
-    parser.add_argument("--hex-b", metavar="HEX_B", default=None, help="Second HEX (or set COMPARE_HEX_B)")
+    parser.add_argument(
+        "elf_a", nargs="?", default=None, help="First ELF (or set COMPARE_ELF_A)"
+    )
+    parser.add_argument(
+        "elf_b", nargs="?", default=None, help="Second ELF (or set COMPARE_ELF_B)"
+    )
+    parser.add_argument(
+        "--hex-a",
+        metavar="HEX_A",
+        default=None,
+        help="First HEX (or set COMPARE_HEX_A)",
+    )
+    parser.add_argument(
+        "--hex-b",
+        metavar="HEX_B",
+        default=None,
+        help="Second HEX (or set COMPARE_HEX_B)",
+    )
     args = parser.parse_args()
 
     elf_a = _resolve_path(args.elf_a, "COMPARE_ELF_A")
@@ -205,7 +225,9 @@ def _run() -> int:
     if elf_b is None:
         errors.append("ELF B required — pass as positional arg or set COMPARE_ELF_B")
     if (hex_a is None) != (hex_b is None):
-        errors.append("Must supply both --hex-a/COMPARE_HEX_A and --hex-b/COMPARE_HEX_B or neither")
+        errors.append(
+            "Must supply both --hex-a/COMPARE_HEX_A and --hex-b/COMPARE_HEX_B or neither"
+        )
 
     if errors:
         for e in errors:
