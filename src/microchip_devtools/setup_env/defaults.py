@@ -27,7 +27,7 @@ PROGRAMMER_VALUES: dict[str, str] = {
 
 COMMON_DEFAULTS: dict[str, str] = {
     "XC32_PATH": "/opt/microchip/xc32/v4.60/bin/",
-    "DFP_PATH": "~/.mchp_packs/Microchip/PIC32MK-MC_DFP/1.12.263",
+    "DFP_PATH": "/opt/microchip/mplabx/v6.25/packs/Microchip/PIC32MK-MC_DFP/1.11.151",
     "IPE_CMD": "/opt/microchip/mplabx/v6.25/mplab_platform/mplab_ipe/ipecmd.sh",
     "PROGRAMMER": "PK5",
     "MPLAB_IDE": "",
