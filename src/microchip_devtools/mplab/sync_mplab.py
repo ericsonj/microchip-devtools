@@ -166,8 +166,11 @@ def update_include_dirs(
 
     for tag in ("C32", "C32CPP"):
         for section in xml_root.iter(tag):
-            for prop in section.findall("property[@key='extra-include-directories']"):
-                prop.set("value", value)
+            prop = section.find("property[@key='extra-include-directories']")
+            if prop is None:
+                prop = ET.SubElement(section, "property")
+                prop.set("key", "extra-include-directories")
+            prop.set("value", value)
 
 
 def _serialize_element(el: ET.Element, depth: int, indent: str = "  ") -> list[str]:

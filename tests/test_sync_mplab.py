@@ -41,6 +41,10 @@ _CONFIGURATIONS_XML = """\
         </C32CPP>
       </compile>
     </conf>
+    <conf name="bootloaderApplication">
+      <C32/>
+      <C32CPP/>
+    </conf>
   </confs>
 </configurationDescriptor>
 """
@@ -280,6 +284,24 @@ def test_update_include_dirs_deduplicates(tmp_path, monkeypatch):
         prop = section.find("property[@key='extra-include-directories']")
         parts = prop.get("value").split(";")
         assert len(parts) == len(set(parts))
+
+
+def test_update_include_dirs_all_confs(tmp_path, monkeypatch):
+    """All configs updated; missing property created in bootloaderApplication."""
+    monkeypatch.chdir(tmp_path)
+    mplab_dir = tmp_path / "firmware" / "PRG-TEST.X"
+    xml_root = _parse_xml(_CONFIGURATIONS_XML)
+    update_include_dirs(xml_root, ["firmware/src/app"], mplab_dir)
+
+    all_c32 = list(xml_root.iter("C32"))
+    all_c32cpp = list(xml_root.iter("C32CPP"))
+    assert len(all_c32) == 2, "expected one C32 per conf"
+    assert len(all_c32cpp) == 2, "expected one C32CPP per conf"
+
+    for section in all_c32 + all_c32cpp:
+        prop = section.find("property[@key='extra-include-directories']")
+        assert prop is not None, f"property missing in {section.tag}"
+        assert prop.get("value") != ""
 
 
 # ---------------------------------------------------------------------------
