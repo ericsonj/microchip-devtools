@@ -4,12 +4,16 @@ from microchip_devtools.mcc.check_clock import (
     _compute_refclk_freq,
     _parse_mcc_core_yml,
     _parse_pbclk_from_core_yml,
+    _parse_pbdiv_from_core_yml,
+    _parse_pbdiv_from_plib_clk,
     _parse_pragma_config,
     _parse_refclk_from_core_yml,
     _parse_refclk_from_plib_clk,
+    _parse_sysclk_from_core_yml,
     check_clock_rules,
     check_pbclk_rules,
     check_refclk_rules,
+    check_scoped_rules,
 )
 
 
@@ -143,6 +147,28 @@ def test_check_clock_rules_detects_missing_key_in_code():
     pragma = _parse_pragma_config(INIT_C_MISSING_KEY)
     rules  = {"FPLLMULT": "MUL_60"}
     assert check_clock_rules(mcc, pragma, rules) == 1
+
+
+def test_check_scoped_rules_code_only_pass(capsys):
+    pragma = _parse_pragma_config(INIT_C_OK)
+    assert check_scoped_rules(pragma, {"FNOSC": "SPLL"}, "CODE", verbose=True) == 0
+    out = capsys.readouterr().out
+    assert "[CODE] FNOSC" in out
+    assert "MCC" not in out
+
+
+def test_check_scoped_rules_missing_key_fails():
+    assert check_scoped_rules({}, {"FNOSC": "SPLL"}, "CODE") == 1
+
+
+def test_check_scoped_rules_mismatch_fails():
+    pragma = _parse_pragma_config(INIT_C_OK)
+    assert check_scoped_rules(pragma, {"FNOSC": "FRCDIV"}, "CODE") == 1
+
+
+def test_check_scoped_rules_mcc_only_pass():
+    mcc = _parse_mcc_core_yml(CORE_YML)
+    assert check_scoped_rules(mcc, {"FPLLMULT": "MUL_60"}, "MCC ") == 0
 
 
 def test_check_clock_rules_detects_missing_key_in_mcc():
@@ -335,12 +361,6 @@ CORE_YML_PBCLK_WRONG_FREQ = CORE_YML_PBCLK.replace(
 
 CORE_YML_PBCLK_DISABLED = CORE_YML_PBCLK.replace("value: 'true'", "value: 'false'")
 
-INIT_C_NO_PBCLK_PRAGMA = "/* no FPBDIV pragma here */"
-
-INIT_C_WITH_PBCLK_PRAGMA = """
-#pragma config FPBDIV2 = DIV_1
-"""
-
 
 # ---------------------------------------------------------------------------
 # PBCLK parser tests
@@ -372,34 +392,187 @@ def test_parse_pbclk_from_core_yml_missing_returns_none():
 # ---------------------------------------------------------------------------
 
 def test_check_pbclk_rules_freq_pass():
-    assert check_pbclk_rules(CORE_YML_PBCLK, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK1_FREQ": "120000000"}) == 0
+    assert check_pbclk_rules(CORE_YML_PBCLK, {"PBCLK1_FREQ": "120000000"}) == 0
 
 
 def test_check_pbclk_rules_freq_fail_wrong_value():
-    failures = check_pbclk_rules(CORE_YML_PBCLK_WRONG_FREQ, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK1_FREQ": "120000000"})
+    failures = check_pbclk_rules(CORE_YML_PBCLK_WRONG_FREQ, {"PBCLK1_FREQ": "120000000"})
     assert failures >= 1
 
 
 def test_check_pbclk_rules_enable_pass():
-    assert check_pbclk_rules(CORE_YML_PBCLK, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK2_ENABLE": "true"}) == 0
+    assert check_pbclk_rules(CORE_YML_PBCLK, {"PBCLK2_ENABLE": "true"}) == 0
 
 
 def test_check_pbclk_rules_enable_fail():
-    failures = check_pbclk_rules(CORE_YML_PBCLK_DISABLED, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK2_ENABLE": "true"})
+    failures = check_pbclk_rules(CORE_YML_PBCLK_DISABLED, {"PBCLK2_ENABLE": "true"})
     assert failures >= 1
 
 
 def test_check_pbclk_rules_pbclk1_enable_implicit():
     # PBCLK1 has no ENABLE symbol — treated as implicitly true
-    assert check_pbclk_rules(CORE_YML_PBCLK, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK1_ENABLE": "true"}) == 0
+    assert check_pbclk_rules(CORE_YML_PBCLK, {"PBCLK1_ENABLE": "true"}) == 0
 
 
-def test_check_pbclk_rules_skips_missing_pragma():
-    # No FPBDIV2 pragma → SKIP (not a failure)
-    assert check_pbclk_rules(CORE_YML_PBCLK, INIT_C_NO_PBCLK_PRAGMA, {"PBCLK2_FREQ": "120000000"}) == 0
+# ---------------------------------------------------------------------------
+# PBDIV (Peripheral Bus divisor) fixtures
+# ---------------------------------------------------------------------------
+
+CORE_YML_PBDIV = """
+data:
+  symbols:
+    CONFIG_SYS_CLK_PBDIV1:
+      attributes:
+        id: CONFIG_SYS_CLK_PBDIV1
+      children:
+      - children:
+        - attributes:
+            value: '1'
+          type: User
+        type: Values
+      type: Integer
+    SYS_CLK_FREQ:
+      attributes:
+        id: SYS_CLK_FREQ
+      children:
+      - children:
+        - attributes:
+            value: '120000000'
+          type: User
+        type: Values
+      type: String
+    CONFIG_SYS_CLK_PBDIV2:
+      attributes:
+        id: CONFIG_SYS_CLK_PBDIV2
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
+"""
+
+PLIB_CLK_PBDIV_OK = """
+PB1DIVbits.PBDIV = 0;
+PB2DIVbits.PBDIV = 1;
+"""
+
+PLIB_CLK_PBDIV_WRONG = """
+PB1DIVbits.PBDIV = 2;
+"""
+
+PLIB_CLK_NO_PBDIV = "/* no PBnDIVbits here */"
+
+INIT_C_FNOSC_SPLL = "#pragma config FNOSC =      SPLL\n"
+INIT_C_FNOSC_FRC = "#pragma config FNOSC =      FRCDIV\n"
 
 
-def test_check_pbclk_rules_fails_on_wrong_pragma():
-    # FPBDIV2 pragma present but wrong value
-    failures = check_pbclk_rules(CORE_YML_PBCLK, INIT_C_WITH_PBCLK_PRAGMA, {"PBCLK2_FREQ": "60000000"})
+# ---------------------------------------------------------------------------
+# PBDIV parser tests
+# ---------------------------------------------------------------------------
+
+def test_parse_pbdiv_from_core_yml_extracts_linear_divisor():
+    assert _parse_pbdiv_from_core_yml(CORE_YML_PBDIV, 1) == 1
+    assert _parse_pbdiv_from_core_yml(CORE_YML_PBDIV, 2) == 2
+
+
+def test_parse_pbdiv_from_core_yml_missing_returns_none():
+    assert _parse_pbdiv_from_core_yml(CORE_YML_PBDIV, 9) is None
+
+
+def test_parse_pbdiv_from_plib_clk_computes_power_of_two():
+    assert _parse_pbdiv_from_plib_clk(PLIB_CLK_PBDIV_OK, 1) == 1   # 2**0
+    assert _parse_pbdiv_from_plib_clk(PLIB_CLK_PBDIV_OK, 2) == 2   # 2**1
+
+
+def test_parse_pbdiv_from_plib_clk_missing_returns_none():
+    assert _parse_pbdiv_from_plib_clk(PLIB_CLK_NO_PBDIV, 1) is None
+
+
+# ---------------------------------------------------------------------------
+# PBDIV checker tests
+# ---------------------------------------------------------------------------
+
+def test_check_pbclk_rules_div_pass():
+    assert check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "1"},
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+    ) == 0
+
+
+def test_check_pbclk_rules_div_pass_divide_by_two():
+    assert check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK2_DIV": "2"},
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+    ) == 0
+
+
+def test_check_pbclk_rules_div_fail_mcc_mismatch():
+    # core.yml PBDIV1=1 but expected 2
+    failures = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "2"},
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+    )
     assert failures >= 1
+
+
+def test_check_pbclk_rules_div_fail_code_mismatch():
+    # PB1DIVbits.PBDIV = 2 → divisor 4, expected 1 (MCC ok, CODE fails)
+    failures = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "1"},
+        plib_clk_text=PLIB_CLK_PBDIV_WRONG,
+    )
+    assert failures >= 1
+
+
+def test_check_pbclk_rules_div_fail_code_register_missing():
+    failures = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "1"},
+        plib_clk_text=PLIB_CLK_NO_PBDIV,
+    )
+    assert failures >= 1
+
+
+def test_check_pbclk_rules_div_fail_mcc_key_missing():
+    failures = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK9_DIV": "1"},
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+    )
+    assert failures >= 1
+
+
+# ---------------------------------------------------------------------------
+# SYS_CLK parser + DIV annotation (FNOSC source + computed PBCLK freq)
+# ---------------------------------------------------------------------------
+
+def test_parse_sysclk_from_core_yml_extracts_freq():
+    assert _parse_sysclk_from_core_yml(CORE_YML_PBDIV) == 120000000
+
+
+def test_parse_sysclk_from_core_yml_missing_returns_zero():
+    assert _parse_sysclk_from_core_yml("data:\n  symbols: {}\n") == 0
+
+
+def test_check_pbclk_rules_div_annotates_spll_freq(capsys):
+    rc = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "1"},
+        verbose=True,
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+        init_c_text=INIT_C_FNOSC_SPLL,
+    )
+    assert rc == 0
+    assert "SPLL 120000000Hz" in capsys.readouterr().out
+
+
+def test_check_pbclk_rules_div_annotates_non_spll_name_only(capsys):
+    rc = check_pbclk_rules(
+        CORE_YML_PBDIV, {"PBCLK1_DIV": "1"},
+        verbose=True,
+        plib_clk_text=PLIB_CLK_PBDIV_OK,
+        init_c_text=INIT_C_FNOSC_FRC,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FRCDIV" in out
+    assert "Hz" not in out
