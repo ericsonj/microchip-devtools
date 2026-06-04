@@ -439,15 +439,16 @@ def test_write_xml_round_trips_source_files(tmp_path):
 # main() integration
 # ---------------------------------------------------------------------------
 
-def test_main_silent_on_success(tmp_path, monkeypatch, capsys):
-    _make_workspace(tmp_path, "PRG-TEST")
+def test_main_prints_summary_on_success(tmp_path, monkeypatch, capsys):
+    _make_workspace_with_headers(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
     monkeypatch.setattr("sys.argv", ["sync-mplab"])
     main()
-    out, err = capsys.readouterr()
-    assert out == ""
-    assert err == ""
+    out = capsys.readouterr().out
+    assert "DRY RUN" not in out
+    assert "app.c" in out
+    assert "app.h" in out
 
 
 def test_main_deletes_makefile_default(tmp_path, monkeypatch):
@@ -579,28 +580,6 @@ def test_update_include_dirs_preserve_order_deduplicates(tmp_path, monkeypatch):
         assert len(parts) == len(set(parts))
         assert parts[0].endswith("zzz")
         assert parts[1].endswith("aaa")
-
-
-def test_main_preserve_order_flag(tmp_path, monkeypatch):
-    _ORDERED_SRCS_MK = (
-        "CSRC += firmware/src/zzz/zzz.c\n"
-        "CSRC += firmware/src/aaa/aaa.c\n"
-        "INCS += -Ifirmware/src/zzz\n"
-        "INCS += -Ifirmware/src/aaa\n"
-    )
-    ws = _make_workspace(tmp_path, "PRG-TEST")
-    ws["srcs_mk"].write_text(_ORDERED_SRCS_MK, encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
-    monkeypatch.setattr("sys.argv", ["sync-mplab", "--preserve-order"])
-    main()
-
-    root = ET.parse(ws["xml"]).getroot()
-    items = [el.text for el in root.findall(".//itemPath")]
-    # zzz must appear before aaa — srcs.mk order preserved
-    assert items.index(next(i for i in items if "zzz" in (i or ""))) < items.index(
-        next(i for i in items if "aaa" in (i or ""))
-    )
 
 
 # ---------------------------------------------------------------------------

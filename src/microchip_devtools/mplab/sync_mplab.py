@@ -256,7 +256,7 @@ def _rebuild_logical_folder(
 
 
 def update_source_files(
-    xml_root: ET.Element, source_tree: FolderNode, sort: bool = True
+    xml_root: ET.Element, source_tree: FolderNode, sort: bool = False
 ) -> None:
     _rebuild_logical_folder(
         xml_root, "SourceFiles", "Source Files", source_tree, sort
@@ -264,7 +264,7 @@ def update_source_files(
 
 
 def update_header_files(
-    xml_root: ET.Element, header_tree: FolderNode, sort: bool = True
+    xml_root: ET.Element, header_tree: FolderNode, sort: bool = False
 ) -> None:
     _rebuild_logical_folder(
         xml_root, "HeaderFiles", "Header Files", header_tree, sort
@@ -275,7 +275,7 @@ def update_include_dirs(
     xml_root: ET.Element,
     inc_dirs: list[str],
     mplab_project_dir: Path,
-    sort: bool = True,
+    sort: bool = False,
 ) -> None:
     rels = [to_mplab_rel(d, mplab_project_dir) for d in dict.fromkeys(inc_dirs)]
     mplab_incs = sorted(rels) if sort else rels
@@ -388,14 +388,6 @@ def main() -> None:
         description="Sync pymaketool sources into MPLAB X project."
     )
     parser.add_argument(
-        "--preserve-order",
-        action="store_true",
-        help=(
-            "Keep source files in the same order as srcs.mk "
-            "instead of sorting alphabetically."
-        ),
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help=(
@@ -404,7 +396,6 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
-    sort = not args.preserve_order
 
     name = project_name()
     mplab_project_dir, configurations_xml, makefile_default_mk = _paths(name)
@@ -430,9 +421,12 @@ def main() -> None:
         print_dry_run(xml_root, source_tree, header_tree)
         return
 
-    update_source_files(xml_root, source_tree, sort=sort)
-    update_header_files(xml_root, header_tree, sort=sort)
-    update_include_dirs(xml_root, inc_dirs, mplab_project_dir, sort=sort)
+    _print_diff("Source Files", "SourceFiles", source_tree, xml_root)
+    _print_diff("Header Files", "HeaderFiles", header_tree, xml_root)
+
+    update_source_files(xml_root, source_tree)
+    update_header_files(xml_root, header_tree)
+    update_include_dirs(xml_root, inc_dirs, mplab_project_dir)
     write_xml(tree, configurations_xml)
 
     if makefile_default_mk.exists():
