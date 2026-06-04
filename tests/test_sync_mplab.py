@@ -9,8 +9,12 @@ from microchip_devtools.mplab.sync_mplab import (
     FolderNode,
     _serialize_element,
     build_source_tree,
+    build_tree,
+    discover_headers,
+    existing_item_paths,
     parse_srcs_mk,
     to_mplab_rel,
+    update_header_files,
     update_include_dirs,
     update_source_files,
     write_xml,
@@ -88,16 +92,32 @@ def _make_workspace(tmp_path: Path, project_name: str = "PRG-TEST") -> dict:
 def test_parse_srcs_mk_returns_sources_and_incs(tmp_path):
     path = tmp_path / "srcs.mk"
     path.write_text(_SRCS_MK, encoding="utf-8")
-    csrc, incs = parse_srcs_mk(path)
+    csrc, incs, skip = parse_srcs_mk(path)
     assert csrc == ["firmware/src/config/default/bsp/bsp.c", "firmware/src/app/app.c"]
     assert incs == ["firmware/src/config/default", "firmware/src/app"]
+    assert skip == []
 
 
 def test_parse_srcs_mk_strips_trailing_slash(tmp_path):
     path = tmp_path / "srcs.mk"
     path.write_text("INCS += -Isrc/inc/\n", encoding="utf-8")
-    _, incs = parse_srcs_mk(path)
+    _, incs, _ = parse_srcs_mk(path)
     assert incs == ["src/inc"]
+
+
+def test_parse_srcs_mk_parses_skip_patterns(tmp_path):
+    path = tmp_path / "srcs.mk"
+    path.write_text(
+        "CSRC += firmware/src/app/app.c\n"
+        "SKIP_PATTERNS += firmware/IDU_Firmware/test\n"
+        "SKIP_PATTERNS += firmware/IDU_Firmware/.template\n",
+        encoding="utf-8",
+    )
+    _, _, skip = parse_srcs_mk(path)
+    assert skip == [
+        "firmware/IDU_Firmware/test",
+        "firmware/IDU_Firmware/.template",
+    ]
 
 
 _ASM_PATH = (
@@ -113,7 +133,7 @@ def test_parse_srcs_mk_includes_asrc(tmp_path):
         f"ASSRC += {_ASM_PATH}\n",
         encoding="utf-8",
     )
-    csrc, _ = parse_srcs_mk(path)
+    csrc, _, _ = parse_srcs_mk(path)
     assert "firmware/src/app/app.c" in csrc
     assert _ASM_PATH in csrc
 
@@ -581,3 +601,155 @@ def test_main_preserve_order_flag(tmp_path, monkeypatch):
     assert items.index(next(i for i in items if "zzz" in (i or ""))) < items.index(
         next(i for i in items if "aaa" in (i or ""))
     )
+
+
+# ---------------------------------------------------------------------------
+# discover_headers
+# ---------------------------------------------------------------------------
+
+def _touch(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("/* header */\n", encoding="utf-8")
+
+
+def test_discover_headers_finds_recursively(tmp_path):
+    _touch(tmp_path / "firmware/src/config/default/bsp/bsp.h")
+    _touch(tmp_path / "firmware/src/config/default/driver/templates/usb.h")
+    headers = discover_headers(["firmware/src/config/default"], [], tmp_path)
+    assert "firmware/src/config/default/bsp/bsp.h" in headers
+    assert "firmware/src/config/default/driver/templates/usb.h" in headers
+
+
+def test_discover_headers_dedups_overlapping_incs(tmp_path):
+    # A deep .h reachable from both a deep and a shallow INCS dir → once only.
+    _touch(tmp_path / "firmware/src/config/default/driver/usb/plib_usb.h")
+    headers = discover_headers(
+        [
+            "firmware/src/config/default",
+            "firmware/src/config/default/driver/usb",
+        ],
+        [],
+        tmp_path,
+    )
+    assert headers.count("firmware/src/config/default/driver/usb/plib_usb.h") == 1
+
+
+def test_discover_headers_skips_pattern_dir(tmp_path):
+    _touch(tmp_path / "firmware/IDU_Firmware/HAL/hal.h")
+    _touch(tmp_path / "firmware/IDU_Firmware/test/test_hal.h")
+    headers = discover_headers(
+        ["firmware/IDU_Firmware"],
+        ["firmware/IDU_Firmware/test"],
+        tmp_path,
+    )
+    assert "firmware/IDU_Firmware/HAL/hal.h" in headers
+    assert "firmware/IDU_Firmware/test/test_hal.h" not in headers
+
+
+def test_discover_headers_skips_pattern_file(tmp_path):
+    _touch(tmp_path / "firmware/IDU_Firmware/keep.h")
+    _touch(tmp_path / "firmware/IDU_Firmware/generated_skip.h")
+    headers = discover_headers(
+        ["firmware/IDU_Firmware"],
+        ["firmware/IDU_Firmware/*_skip.h"],
+        tmp_path,
+    )
+    assert "firmware/IDU_Firmware/keep.h" in headers
+    assert "firmware/IDU_Firmware/generated_skip.h" not in headers
+
+
+def test_discover_headers_skips_nonexistent_dir(tmp_path):
+    # Must not raise even when the INCS dir is absent on disk.
+    headers = discover_headers(["firmware/does/not/exist"], [], tmp_path)
+    assert headers == []
+
+
+# ---------------------------------------------------------------------------
+# update_header_files
+# ---------------------------------------------------------------------------
+
+def test_update_header_files_rebuilds_folder():
+    xml_root = _parse_xml(_CONFIGURATIONS_XML)
+    header_tree = FolderNode("HeaderFiles")
+    header_tree.add_file(["app", "app.h"], "../src/app/app.h")
+    update_header_files(xml_root, header_tree)
+
+    hf = xml_root.find(".//logicalFolder[@name='HeaderFiles']")
+    assert hf.get("displayName") == "Header Files"
+    assert any(el.text == "../src/app/app.h" for el in hf.iter("itemPath"))
+
+
+def test_existing_item_paths_collects_recursively():
+    xml_root = _parse_xml(_CONFIGURATIONS_XML)
+    header_tree = FolderNode("HeaderFiles")
+    header_tree.add_file(["a", "a.h"], "../src/a/a.h")
+    header_tree.add_file(["b.h"], "../src/b.h")
+    update_header_files(xml_root, header_tree)
+
+    paths = existing_item_paths(xml_root, "HeaderFiles")
+    assert paths == {"../src/a/a.h", "../src/b.h"}
+
+
+# ---------------------------------------------------------------------------
+# main() with headers + --dry-run
+# ---------------------------------------------------------------------------
+
+def _make_workspace_with_headers(tmp_path: Path) -> dict:
+    """Workspace whose INCS dirs exist on disk and hold .h files (incl. a skipped one)."""
+    paths = _make_workspace(tmp_path, "PRG-TEST")
+    paths["srcs_mk"].write_text(
+        "CSRC += firmware/src/app/app.c\n"
+        "INCS += -Ifirmware/src/app\n"
+        "SKIP_PATTERNS += firmware/src/app/test\n",
+        encoding="utf-8",
+    )
+    _touch(tmp_path / "firmware/src/app/app.h")
+    _touch(tmp_path / "firmware/src/app/sub/util.h")
+    _touch(tmp_path / "firmware/src/app/test/test_app.h")
+    return paths
+
+
+def test_main_populates_header_files(tmp_path, monkeypatch):
+    paths = _make_workspace_with_headers(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab"])
+    main()
+
+    root = ET.parse(paths["xml"]).getroot()
+    hf = root.find(".//logicalFolder[@name='HeaderFiles']")
+    headers = [el.text for el in hf.iter("itemPath")]
+    assert any("app.h" in (h or "") for h in headers)
+    assert any("util.h" in (h or "") for h in headers)
+    # SKIP'd tree excluded
+    assert not any("test_app.h" in (h or "") for h in headers)
+    # Sources still synced (no regression)
+    sf = root.find(".//logicalFolder[@name='SourceFiles']")
+    assert any("app.c" in (el.text or "") for el in sf.iter("itemPath"))
+
+
+def test_main_dry_run_writes_nothing(tmp_path, monkeypatch):
+    paths = _make_workspace_with_headers(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab", "--dry-run"])
+
+    xml_before = paths["xml"].read_text(encoding="utf-8")
+    assert paths["makefile"].exists()
+    main()
+
+    assert paths["xml"].read_text(encoding="utf-8") == xml_before
+    assert paths["makefile"].exists()  # Makefile NOT deleted in dry-run
+
+
+def test_main_dry_run_reports_new_headers(tmp_path, monkeypatch, capsys):
+    paths = _make_workspace_with_headers(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VOLTU_PROJECT_NAME", "PRG-TEST")
+    monkeypatch.setattr("sys.argv", ["sync-mplab", "--dry-run"])
+    main()
+
+    out = capsys.readouterr().out
+    assert "DRY RUN" in out
+    assert "app.h" in out          # a new header is reported
+    assert "test_app.h" not in out  # skipped header never appears
