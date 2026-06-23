@@ -47,6 +47,7 @@ jobs:
                 https://github.com/uncrustify/uncrustify.git /src
               cd /src && mkdir build && cd build
               cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
                 -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" ..
               cmake --build . -j"$(nproc)"
               ./uncrustify --version
@@ -80,7 +81,7 @@ jobs:
 
       - name: Build (MSVC + CMake)
         run: |
-          cmake -S src -B src/build -DCMAKE_BUILD_TYPE=Release
+          cmake -S src -B src/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build src/build --config Release
           src/build/Release/uncrustify.exe --version
           Copy-Item src/build/Release/uncrustify.exe "uncrustify-$env:UNCRUSTIFY_VERSION-windows-x86_64.exe"
