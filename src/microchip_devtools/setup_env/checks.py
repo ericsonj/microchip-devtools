@@ -72,15 +72,27 @@ def check_cppcheck() -> bool:
 
 
 def check_uncrustify() -> bool:
-    binary = shutil.which("uncrustify")
-    if binary is None:
-        _fail("uncrustify", "Not found on PATH. Install with: sudo apt install uncrustify")
+    from microchip_devtools.format.uncrustify_bin import (
+        UNCRUSTIFY_VERSION,
+        resolve_uncrustify,
+    )
+
+    try:
+        binary = resolve_uncrustify()
+    except Exception as exc:
+        _fail("uncrustify", str(exc))
         return False
     try:
         result = subprocess.run(
-            ["uncrustify", "--version"], capture_output=True, text=True, timeout=10
+            [str(binary), "--version"], capture_output=True, text=True, timeout=10
         )
-        version = result.stdout.strip() or result.stderr.strip()
+        version = (result.stdout.strip() or result.stderr.strip())
+        if UNCRUSTIFY_VERSION not in version:
+            _fail(
+                "uncrustify",
+                f"Expected {UNCRUSTIFY_VERSION}, got {version!r} ({binary}).",
+            )
+            return False
         _pass(f"uncrustify  ({version})")
         return True
     except Exception as exc:

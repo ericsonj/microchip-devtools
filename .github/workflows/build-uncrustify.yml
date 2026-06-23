@@ -1,0 +1,123 @@
+name: Build uncrustify binary
+
+# Builds a pinned uncrustify from source for each supported target and
+# publishes the binaries (+ SHA256) as assets on a GitHub Release.
+# These binaries are downloaded on first use by the `format` command
+# (see src/microchip_devtools/format/uncrustify_bin.py).
+#
+# Trigger manually, or push a tag like `uncrustify-bin-v0.72.0`.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "uncrustify-bin-v*"
+
+env:
+  UNCRUSTIFY_VERSION: "0.72.0"
+  UNCRUSTIFY_TAG: "uncrustify-0.72.0"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            platform: linux/amd64
+            image: quay.io/pypa/manylinux2014_x86_64
+          - arch: aarch64
+            platform: linux/arm64
+            image: quay.io/pypa/manylinux2014_aarch64
+    steps:
+      - name: Set up QEMU (for arm64 emulation)
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build inside manylinux2014 container
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -e UNCRUSTIFY_TAG="${UNCRUSTIFY_TAG}" \
+            -v "${PWD}:/out" \
+            ${{ matrix.image }} bash -euxo pipefail -c '
+              git clone --depth 1 --branch "${UNCRUSTIFY_TAG}" \
+                https://github.com/uncrustify/uncrustify.git /src
+              cd /src && mkdir build && cd build
+              cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" ..
+              cmake --build . -j"$(nproc)"
+              ./uncrustify --version
+              cp uncrustify /out/uncrustify-'"${UNCRUSTIFY_VERSION}"'-linux-${{ matrix.arch }}
+            '
+
+      - name: Checksum
+        run: |
+          NAME="uncrustify-${UNCRUSTIFY_VERSION}-linux-${{ matrix.arch }}"
+          sha256sum "${NAME}" | awk '{print $1}' > "${NAME}.sha256"
+
+      - name: Verify runs on old glibc (ubuntu:18.04)
+        if: matrix.arch == 'x86_64'
+        run: |
+          NAME="uncrustify-${UNCRUSTIFY_VERSION}-linux-${{ matrix.arch }}"
+          docker run --rm -v "${PWD}:/b" ubuntu:18.04 "/b/${NAME}" --version
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            uncrustify-${{ env.UNCRUSTIFY_VERSION }}-linux-${{ matrix.arch }}
+            uncrustify-${{ env.UNCRUSTIFY_VERSION }}-linux-${{ matrix.arch }}.sha256
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Clone uncrustify
+        run: git clone --depth 1 --branch "$env:UNCRUSTIFY_TAG" https://github.com/uncrustify/uncrustify.git src
+
+      - name: Build (MSVC + CMake)
+        run: |
+          cmake -S src -B src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build src/build --config Release
+          src/build/Release/uncrustify.exe --version
+          Copy-Item src/build/Release/uncrustify.exe "uncrustify-$env:UNCRUSTIFY_VERSION-windows-x86_64.exe"
+
+      - name: Checksum
+        run: |
+          $name = "uncrustify-$env:UNCRUSTIFY_VERSION-windows-x86_64.exe"
+          (Get-FileHash $name -Algorithm SHA256).Hash.ToLower() | Out-File -NoNewline "$name.sha256"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: |
+            uncrustify-${{ env.UNCRUSTIFY_VERSION }}-windows-x86_64.exe
+            uncrustify-${{ env.UNCRUSTIFY_VERSION }}-windows-x86_64.exe.sha256
+
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/uncrustify-bin-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create / update Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Prebuilt uncrustify ${UNCRUSTIFY_VERSION} binaries." \
+            dist/* \
+          || gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" dist/* --clobber

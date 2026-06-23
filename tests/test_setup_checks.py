@@ -44,7 +44,6 @@ _TOOL_CHECKS = [
     (check_poetry, "poetry"),
     (check_make, "make"),
     (check_cppcheck, "cppcheck"),
-    (check_uncrustify, "uncrustify"),
 ]
 
 
@@ -71,6 +70,36 @@ def test_tool_check_subprocess_exception(fn, cmd):
         patch("subprocess.run", side_effect=OSError("exec failed")),
     ):
         assert fn() is False
+
+
+# ---------------------------------------------------------------------------
+# check_uncrustify — managed binary (resolve + version assert), no $PATH
+# ---------------------------------------------------------------------------
+
+_RESOLVE = "microchip_devtools.format.uncrustify_bin.resolve_uncrustify"
+
+
+def test_check_uncrustify_pass_on_correct_version():
+    ok = CompletedProcess(args=[], returncode=0, stdout="Uncrustify-0.72.0", stderr="")
+    with (
+        patch(_RESOLVE, return_value="/cache/uncrustify"),
+        patch("subprocess.run", return_value=ok),
+    ):
+        assert check_uncrustify() is True
+
+
+def test_check_uncrustify_fail_on_wrong_version():
+    bad = CompletedProcess(args=[], returncode=0, stdout="Uncrustify-0.78.1", stderr="")
+    with (
+        patch(_RESOLVE, return_value="/cache/uncrustify"),
+        patch("subprocess.run", return_value=bad),
+    ):
+        assert check_uncrustify() is False
+
+
+def test_check_uncrustify_fail_when_resolve_raises():
+    with patch(_RESOLVE, side_effect=RuntimeError("download failed")):
+        assert check_uncrustify() is False
 
 
 # ---------------------------------------------------------------------------

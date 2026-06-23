@@ -47,30 +47,54 @@ def test_collect_files_warns_missing_root(capsys, tmp_path):
 
 
 # --- format_files (mocked) ----------------------------------------------------
+# format_files resolves the uncrustify binary before formatting; patch the
+# resolver so tests never hit the network. _run_uncrustify args are now
+# (binary, path, config) — config is positional index 2.
 
 def test_format_files_uses_bundled_config_by_default(tmp_path):
     (tmp_path / "main.c").write_text("")
-    with patch("microchip_devtools.format.uncrustify._run_uncrustify") as mock_run:
+    with patch(
+        "microchip_devtools.format.uncrustify.resolve_uncrustify",
+        return_value=Path("uncrustify"),
+    ), patch("microchip_devtools.format.uncrustify._run_uncrustify") as mock_run:
         mock_run.return_value = (False, "")
         format_files([tmp_path])
-        assert mock_run.call_args[0][1] == str(DEFAULT_CONFIG)
+        assert mock_run.call_args[0][2] == str(DEFAULT_CONFIG)
 
 
 def test_format_files_uses_custom_config_when_provided(tmp_path):
     (tmp_path / "main.c").write_text("")
-    with patch("microchip_devtools.format.uncrustify._run_uncrustify") as mock_run:
+    with patch(
+        "microchip_devtools.format.uncrustify.resolve_uncrustify",
+        return_value=Path("uncrustify"),
+    ), patch("microchip_devtools.format.uncrustify._run_uncrustify") as mock_run:
         mock_run.return_value = (False, "")
         format_files([tmp_path], config="custom.cfg")
-        assert mock_run.call_args[0][1] == "custom.cfg"
+        assert mock_run.call_args[0][2] == "custom.cfg"
 
 
 def test_format_files_returns_0_on_success(tmp_path):
     (tmp_path / "main.c").write_text("")
-    with patch("microchip_devtools.format.uncrustify._run_uncrustify", return_value=(False, "")):
+    with patch(
+        "microchip_devtools.format.uncrustify.resolve_uncrustify",
+        return_value=Path("uncrustify"),
+    ), patch("microchip_devtools.format.uncrustify._run_uncrustify", return_value=(False, "")):
         assert format_files([tmp_path]) == 0
 
 
 def test_format_files_returns_1_on_error(tmp_path):
     (tmp_path / "main.c").write_text("")
-    with patch("microchip_devtools.format.uncrustify._run_uncrustify", return_value=(False, "error msg")):
+    with patch(
+        "microchip_devtools.format.uncrustify.resolve_uncrustify",
+        return_value=Path("uncrustify"),
+    ), patch("microchip_devtools.format.uncrustify._run_uncrustify", return_value=(False, "error msg")):
+        assert format_files([tmp_path]) == 1
+
+
+def test_format_files_returns_1_when_resolve_fails(tmp_path):
+    (tmp_path / "main.c").write_text("")
+    with patch(
+        "microchip_devtools.format.uncrustify.resolve_uncrustify",
+        side_effect=RuntimeError("download failed"),
+    ):
         assert format_files([tmp_path]) == 1
