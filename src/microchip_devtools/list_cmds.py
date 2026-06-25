@@ -15,6 +15,7 @@ COMMANDS = [
     ("validate-fmt3", "Detect XC32 fmt=3 compiler bug in ELF/object files"),
     ("merge-hex", "Merge bootloader + app HEX into a single image"),
     ("format", "Format C/H source files with uncrustify"),
+    ("uncrustify", "Run the pinned uncrustify binary directly (transparent passthrough)"),
     ("mcc-refresh", "Force full MCC regeneration workflow"),
     ("check-peripheral", "Validate MCC-generated peripheral config files"),
     ("check-clock", "Validate clock/oscillator configuration (MCC + #pragma config)"),
