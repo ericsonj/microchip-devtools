@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from microchip_devtools.format.uncrustify_bin import resolve_uncrustify
+
 DEFAULT_EXTENSIONS: list[str] = [".c", ".h"]
 DEFAULT_CONFIG: Path = Path(__file__).parent / "uncrustifyVoltuC.cfg"
 
@@ -40,11 +42,11 @@ def _collect_files(
     return found
 
 
-def _run_uncrustify(path: Path, config: str) -> tuple[bool, str]:
+def _run_uncrustify(binary: Path, path: Path, config: str) -> tuple[bool, str]:
     mtime_before = path.stat().st_mtime
     result = subprocess.run(
         [
-            "uncrustify",
+            str(binary),
             "-c",
             config,
             "--replace",
@@ -83,11 +85,17 @@ def format_files(
         print("uncrustify: no files matched — check roots and exclude patterns")
         return 0
 
+    try:
+        binary = resolve_uncrustify()
+    except (RuntimeError, OSError) as exc:
+        print(f"uncrustify: {exc}", file=sys.stderr)
+        return 1
+
     formatted: list[Path] = []
     errors: list[tuple[Path, str]] = []
 
     for path in files:
-        changed, err = _run_uncrustify(path, resolved_config)
+        changed, err = _run_uncrustify(binary, path, resolved_config)
         if err:
             errors.append((path, err))
         elif changed:
